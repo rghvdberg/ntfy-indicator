@@ -28,7 +28,25 @@ cd ntfy-indicator
 cp -r . ~/.local/share/gnome-shell/extensions/ntfy-indicator@rghvdberg
 
 # Compile GSettings schemas
-glib-compile-schemas ~/.local/share/gnome-shell/extensions/ntfy-indicator@rghvdberg/schemas/
+mkdir -p ~/.local/share/glib-2.0/schemas
+cp ~/.local/share/gnome-shell/extensions/ntfy-indicator@rghvdberg/schemas/*.gschema.xml ~/.local/share/glib-2.0/schemas/
+glib-compile-schemas ~/.local/share/glib-2.0/schemas
+
+# Install icons (for proper scaling in panel and dock)
+mkdir -p ~/.local/share/icons/hicolor/scalable/apps
+cp ~/.local/share/gnome-shell/extensions/ntfy-indicator@rghvdberg/icons/ntfy.svg ~/.local/share/icons/hicolor/scalable/apps/
+cp ~/.local/share/gnome-shell/extensions/ntfy-indicator@rghvdberg/icons/ntfy-indicator.svg ~/.local/share/icons/hicolor/scalable/apps/
+gtk-update-icon-cache -q -t ~/.local/share/icons/hicolor
+
+# Install desktop file (for dock icon of history dialog)
+mkdir -p ~/.local/share/applications
+cat > ~/.local/share/applications/com.ntfy.HistoryDialog.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=ntfy History
+Icon=ntfy
+NoDisplay=true
+EOF
 
 # Enable the extension
 gnome-extensions enable ntfy-indicator@rghvdberg
