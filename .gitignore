@@ -1,0 +1,17 @@
+# Build artifacts
+schemas/gschemas.compiled
+
+# Dev-only files (not published)
+server.yml
+vm-sync.sh
+SESSION.md
+NOTES.md
+INSTALL.md
+PLAN.md
+
+# Editor/OS
+*.swp
+*~
+.DS_Store
+.vscode/
+.idea/

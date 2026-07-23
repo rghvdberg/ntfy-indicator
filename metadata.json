@@ -1,0 +1,12 @@
+{
+  "name": "ntfy Indicator",
+  "description": "Desktop notifications via ntfy - Subscribe to channels and receive real-time notifications",
+  "uuid": "ntfy-indicator@rghvdberg",
+  "shell-version": [
+    "50",
+    "51",
+    "52"
+  ],
+  "url": "https://github.com/rghvdberg/ntfy-indicator",
+  "settings-schema": "org.gnome.shell.extensions.ntfy-indicator"
+}

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ntfy GNOME Shell Extension - GSettings Schema
+
+  Copyright 2026 Rob van den Berg
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; see the GNU General Public License for details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<schemalist gettext-domain="gnome-shell">
+  <schema id="org.gnome.shell.extensions.ntfy-indicator" path="/org/gnome/shell/extensions/ntfy-indicator/">
+    
+    <!-- Server Configuration -->
+    <key type="s" name="server">
+      <default>"https://ntfy.sh"</default>
+      <summary>ntfy server URL</summary>
+      <description>The base URL of the ntfy server to connect to</description>
+    </key>
+
+    <!-- SSL/TLS Settings -->
+    <key type="b" name="accept-self-signed">
+      <default>false</default>
+      <summary>Accept self-signed SSL certificates</summary>
+      <description>Allow connections to servers with self-signed SSL certificates (rejects expired, wrong-host, and other invalid certs)</description>
+    </key>
+
+    <!-- Channels/Topics -->
+    <key type="as" name="channels">
+      <default>[]</default>
+      <summary>Subscribed channels</summary>
+      <description>List of channel/topic names to subscribe to</description>
+    </key>
+
+    <!-- API Keys (stored as JSON string for simplicity) -->
+    <key type="s" name="api-keys">
+      <default>"{}"</default>
+      <summary>API keys per server</summary>
+      <description>JSON object mapping server URLs to API keys</description>
+    </key>
+
+    <!-- Notification Settings -->
+    <key type="i" name="history-limit">
+      <default>100</default>
+      <range min="10" max="1000"/>
+      <summary>History limit per channel</summary>
+      <description>Maximum number of notifications to store per channel</description>
+    </key>
+
+    <!-- Muted Topics (JSON string for simplicity) -->
+    <key type="s" name="muted-topics">
+      <default>"{}"</default>
+      <summary>Muted topics</summary>
+      <description>JSON object mapping topic URLs to mute expiry timestamps</description>
+    </key>
+
+  </schema>
+</schemalist>
