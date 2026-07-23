@@ -60,7 +60,7 @@ gnome-extensions enable ntfy-indicator@rghvdberg
 Open the extension preferences to configure:
 
 - **Server URL** — Base URL of your ntfy server (default: `https://ntfy.sh`)
-- **API Key** — For authenticated servers (optional)
+- **API Key** — For authenticated servers (optional, untested)
 - **Accept self-signed certificates** — For self-hosted servers with self-signed certs
 - **Topics** — Add topics to subscribe to
 - **History Limit** — Max notifications per topic (default: 100)
