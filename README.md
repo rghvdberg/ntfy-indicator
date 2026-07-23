@@ -47,6 +47,10 @@ Open the extension preferences to configure:
 - libadwaita
 - libsoup3
 
+## About
+
+This project is vibe coded — built collaboratively with AI (Claude/opencode). The human designed the features, tested on real hardware, and reviewed every change. The AI wrote the code.
+
 ## License
 
 GNU General Public License v3.0 or later — see [LICENSE](LICENSE) for details.
