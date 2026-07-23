@@ -35,7 +35,6 @@ glib-compile-schemas ~/.local/share/glib-2.0/schemas
 # Install icons (for proper scaling in panel and dock)
 mkdir -p ~/.local/share/icons/hicolor/scalable/apps
 cp ~/.local/share/gnome-shell/extensions/ntfy-indicator@rghvdberg/icons/ntfy.svg ~/.local/share/icons/hicolor/scalable/apps/
-cp ~/.local/share/gnome-shell/extensions/ntfy-indicator@rghvdberg/icons/ntfy-indicator.svg ~/.local/share/icons/hicolor/scalable/apps/
 gtk-update-icon-cache -q -t ~/.local/share/icons/hicolor
 
 # Install desktop file (for dock icon of history dialog)
