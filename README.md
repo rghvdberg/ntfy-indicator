@@ -49,7 +49,7 @@ Open the extension preferences to configure:
 
 ## About
 
-This project is vibe coded — built collaboratively with AI (Claude/opencode). The human designed the features, tested on real hardware, and reviewed every change. The AI wrote the code.
+This project is vibe coded — built collaboratively with AI (opencode). The human designed the features, tested on real hardware, and reviewed every change. The AI wrote the code.
 
 ## License
 
