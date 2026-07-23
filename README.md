@@ -46,7 +46,7 @@ Open the extension preferences to configure:
 
 ## Requirements
 
-- GNOME Shell 45+
+- GNOME Shell 50+
 - GTK4
 - libadwaita
 - libsoup3
