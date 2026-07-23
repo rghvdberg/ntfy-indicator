@@ -49,6 +49,10 @@ EOF
 
 # Enable the extension
 gnome-extensions enable ntfy-indicator@rghvdberg
+
+# Restart GNOME Shell to load the extension
+# X11: press Alt+F2, type 'r', press Enter
+# Wayland: log out and log back in
 ```
 
 ### Configuration
