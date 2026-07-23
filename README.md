@@ -2,6 +2,10 @@
 
 Desktop notifications via ntfy.sh — subscribe to topics and receive real-time notifications on your GNOME desktop.
 
+## About
+
+This project is vibe coded — built collaboratively with AI (opencode). The human designed the features, tested on real hardware, and reviewed every change. The AI wrote the code.
+
 ## Features
 
 - Real-time notifications via ntfy JSON polling
@@ -46,10 +50,6 @@ Open the extension preferences to configure:
 - GTK4
 - libadwaita
 - libsoup3
-
-## About
-
-This project is vibe coded — built collaboratively with AI (opencode). The human designed the features, tested on real hardware, and reviewed every change. The AI wrote the code.
 
 ## License
 
