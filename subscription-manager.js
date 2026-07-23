@@ -221,10 +221,18 @@ export class SubscriptionManager {
     const title = msg.title || `ntfy: ${msg.topic}`;
     const body = msg.message || '';
     
-    const source = this._source;
-    if (!source) return;
+    // ponytail: Source auto-destroys when all notifications are dismissed.
+    // Recreate lazily instead of bailing out when null.
+    if (!this._source) {
+      this._source = new MessageTray.Source({
+        title: 'ntfy',
+        iconName: 'dialog-information-symbolic',
+      });
+      Main.messageTray.add(this._source);
+      this._source.connect('destroy', () => { this._source = null; });
+    }
     const notification = new MessageTray.Notification({
-      source: source,
+      source: this._source,
       title: title,
       body: body,
       iconName: 'dialog-information-symbolic',
@@ -252,18 +260,7 @@ export class SubscriptionManager {
       }
     });
     
-    try {
-      source.addNotification(notification);
-    } catch (e) {
-      // Source was disposed by GNOME Shell without firing destroy signal; recreate
-      this._source = new MessageTray.Source({
-        title: 'ntfy',
-        iconName: 'dialog-information-symbolic',
-      });
-      Main.messageTray.add(this._source);
-      this._source.connect('destroy', () => { this._source = null; });
-      this._source.addNotification(notification);
-    }
+    this._source.addNotification(notification);
   }
   
   /**
