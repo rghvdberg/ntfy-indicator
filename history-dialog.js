@@ -17,7 +17,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
- */
 
 imports.gi.versions.Gtk = '4.0';
 imports.gi.versions.Adw = '1';
