@@ -27,6 +27,7 @@ import { getNotificationFile, getDataDir } from './utils.js';
 export class NotificationStore {
   constructor() {
     this.dataDir = getDataDir();
+    this.cacheDir = GLib.build_filenamev([GLib.get_user_data_dir(), 'ntfy', 'cache']);
     this._ensureDataDir();
     this._onChange = null;
   }
@@ -41,6 +42,7 @@ export class NotificationStore {
 
   _ensureDataDir() {
     GLib.mkdir_with_parents(this.dataDir, 0o755);
+    GLib.mkdir_with_parents(this.cacheDir, 0o755);
   }
 
   /**

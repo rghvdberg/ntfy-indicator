@@ -47,11 +47,6 @@ export function parseTopicUrl(topicUrl) {
     return { baseUrl: null, topic: topicUrl };
   }
 }
-
-export function getServerUrl(settings) {
-  return settings.get_string('server');
-}
-
 export function getApiKey(settings, serverUrl) {
   try {
     const apiKeysStr = settings.get_string('api-keys');

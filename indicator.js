@@ -28,7 +28,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import { subscriptionManager } from './subscription-manager.js';
 import { notificationStore } from './notification-store.js';
-import { getServerUrl, parseTopicUrl } from './utils.js';
+import { parseTopicUrl } from './utils.js';
 
 export const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
@@ -64,7 +64,7 @@ class Indicator extends PanelMenu.Button {
     this.menu.removeAll();
 
     const channels = this.settings.get_strv('channels');
-    const defaultServer = getServerUrl(this.settings);
+    const defaultServer = this.settings.get_string('server');
 
     if (channels.length === 0) {
       this.menu.addMenuItem(new PopupMenu.PopupMenuItem('(no topics)'));
@@ -91,7 +91,7 @@ class Indicator extends PanelMenu.Button {
 
   _openHistoryDialog(topic, server) {
     this.menu.close();
-    subscriptionManager._openHistoryDialog(topic, server || getServerUrl(this.settings));
+    subscriptionManager._openHistoryDialog(topic, server || this.settings.get_string('server'));
   }
 
   _setupSignals() {
@@ -108,22 +108,9 @@ class Indicator extends PanelMenu.Button {
   }
 
   _syncChannels() {
-    const channels = this.settings.get_strv('channels');
-    const defaultServer = getServerUrl(this.settings);
-    // Resolve channel entries to full topicUrls for comparison
-    const urls = channels.map(ch => {
-      const { baseUrl, topic } = parseTopicUrl(ch);
-      return `${baseUrl || defaultServer}/${topic}`;
-    });
-    const current = subscriptionManager.getSubscribedTopics();
-    for (const u of urls) {
-      if (!current.includes(u)) subscriptionManager.subscribe(u);
-    }
-    for (const u of current) {
-      if (!urls.includes(u)) subscriptionManager.unsubscribe(u);
-    }
+    // ponytail: unsubscribes all first, fine for single-channel changes
+    this._restartSubscriptions();
     this._rebuildMenu();
-    this._updateButtonText();
   }
 
   _startSubscriptions() {
@@ -140,14 +127,16 @@ class Indicator extends PanelMenu.Button {
 
   _updateButtonText() {
     let total = 0;
-    const defaultServer = getServerUrl(this.settings);
+    const defaultServer = this.settings.get_string('server');
     for (const ch of this.settings.get_strv('channels')) {
       const { baseUrl, topic } = parseTopicUrl(ch);
       const topicUrl = `${baseUrl || defaultServer}/${topic}`;
       const count = subscriptionManager.getUnreadCount(topicUrl);
       total += count;
     }
+    if (this._countLabel) {
     this._countLabel.set_text(total > 0 ? `(${total})` : '');
+  }
   }
 
   destroy() {

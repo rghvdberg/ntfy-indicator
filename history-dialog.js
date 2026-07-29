@@ -21,8 +21,98 @@
 imports.gi.versions.Gtk = '4.0';
 imports.gi.versions.Adw = '1';
 imports.gi.versions.Soup = '3.0';
+imports.gi.versions.GdkPixbuf = '2.0';
 
-const { Gtk, Adw, Gio, GLib, Soup, Pango } = imports.gi;
+const { Gtk, Adw, Gio, GLib, Soup, Pango, GdkPixbuf } = imports.gi;
+
+// Attachment downloader for GTK4 (downloads all file types)
+class AttachmentDownloader {
+  constructor(acceptSelfSigned, apiKey) {
+    this.acceptSelfSigned = acceptSelfSigned;
+    this.apiKey = apiKey;
+    this.session = new Soup.Session();
+    
+    // Build cache dir
+    const dataDir = GLib.build_filenamev([GLib.get_user_data_dir(), 'ntfy', 'cache']);
+    GLib.mkdir_with_parents(dataDir, 0o755);
+    this.cacheDir = dataDir;
+  }
+  
+  getCachedAttachment(notificationId, attachmentName) {
+    const safeName = `${notificationId}_${attachmentName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const cachePath = GLib.build_filenamev([this.cacheDir, safeName]);
+    if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) {
+      return cachePath;
+    }
+    return null;
+  }
+  
+  getCacheFilePath(notificationId, attachmentName) {
+    const safeName = `${notificationId}_${attachmentName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    return GLib.build_filenamev([this.cacheDir, safeName]);
+  }
+  
+  downloadAttachmentFile(url, cachePath) {
+    return new Promise((resolve) => {
+      const msg = Soup.Message.new('GET', url);
+
+      if (this.acceptSelfSigned === 'true') {
+        msg.connect('accept-certificate', (_msg, _cert, errors) => {
+          return errors === Gio.TlsCertificateFlags.UNKNOWN_CA;
+        });
+      }
+
+      if (this.apiKey) {
+        msg.request_headers.append('Authorization', 'Bearer ' + this.apiKey);
+      }
+
+      this.session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+        try {
+          const bytes = sess.send_and_read_finish(result);
+          const data = bytes.get_data();
+          const size = data.length;
+
+          if (size > 5 * 1024 * 1024) {
+            printerr(`[history] File too large (${size} bytes), skipping: ${url}`);
+            resolve(null);
+            return;
+          }
+
+          const file = Gio.File.new_for_path(cachePath);
+          const ostream = file.replace(
+            null,
+            false,
+            Gio.FileCreateFlags.REPLACE_DESTINATION,
+            null
+          );
+          ostream.write_all(data, null);
+          ostream.close(null);
+
+          print(`[history] Cached attachment: ${cachePath} (${size} bytes)`);
+          resolve(cachePath);
+        } catch (e) {
+          printerr(`[history] Failed to download/cache file: ${e.message}`);
+          resolve(null);
+        }
+      });
+    });
+  }
+  
+  async downloadAttachment(attachment, notificationId) {
+    if (!attachment || !attachment.url) {
+      return null;
+    }
+    
+    // Download all attachments (not just images)
+    const cached = this.getCachedAttachment(notificationId, attachment.name || 'attachment');
+    if (cached) {
+      return cached;
+    }
+    
+    const cachePath = this.getCacheFilePath(notificationId, attachment.name || 'attachment');
+    return await this.downloadAttachmentFile(attachment.url, cachePath);
+  }
+}
 
 const args = ARGV;
 if (args.length < 6) {
@@ -65,6 +155,15 @@ const app = new Adw.Application({
 app.connect('activate', () => {
     const session = new Soup.Session();
     let currentTopic = initialTopic;
+    let attachmentDownloader = null;
+    
+    // Initialize image downloader after we have settings
+    function initAttachmentDownloader() {
+      if (!attachmentDownloader) {
+        attachmentDownloader = new AttachmentDownloader(acceptSelfSigned, apiKey);
+      }
+      return attachmentDownloader;
+    }
 
     const window = new Adw.ApplicationWindow({
         application: app,
@@ -362,12 +461,126 @@ app.connect('activate', () => {
             box.append(tagsLabel);
         }
 
+        // Image preview for image attachments
+        if (m.attachment && m.attachment.type && m.attachment.type.startsWith('image/')) {
+            const downloader = initAttachmentDownloader();
+            const cachePath = downloader.getCachedAttachment(m.id, m.attachment.name || 'image');
+            
+            if (cachePath) {
+                // Show cached image immediately
+                const picture = _createImagePreview(cachePath, m.attachment.url);
+                if (picture) {
+                    box.append(picture);
+                }
+            } else {
+                // Show loading placeholder, download async
+                const placeholder = new Gtk.Box({
+                    orientation: Gtk.Orientation.VERTICAL,
+                    css_classes: ['ntfy-image-loading'],
+                    halign: Gtk.Align.START,
+                    width_request: 200,
+                    height_request: 100,
+                });
+                const loadingLabel = new Gtk.Label({
+                    label: 'Loading image...',
+                    valign: Gtk.Align.CENTER,
+                    halign: Gtk.Align.CENTER,
+                    css_classes: ['caption', 'dim-label'],
+                });
+                placeholder.append(loadingLabel);
+                box.append(placeholder);
+                
+                // Download asynchronously
+                downloader.downloadAttachment(m.attachment, m.id).then(cachePath => {
+                    if (cachePath) {
+const picture = _createImagePreview(cachePath, m.attachment.url, m.attachment.type);
+                        if (picture) {
+                            placeholder.destroy();
+                            box.insert_child_before(picture, null);
+                        }
+                    }
+                });
+            }
+        }
+
         if (m.attachment) {
             const att = m.attachment;
             let attText = att.name || 'attachment';
             if (att.size) attText += ` (${att.size < 1024 ? att.size + ' B' : att.size < 1048576 ? (att.size / 1024).toFixed(1) + ' KB' : (att.size / 1048576).toFixed(1) + ' MB'})`;
             const attUrl = att.url || '';
-            if (attUrl) {
+            const isImage = att.type && att.type.startsWith('image/');
+            
+            if (attUrl && !isImage) {
+                // Non-image attachment: download and open with default app
+                const downloader = initAttachmentDownloader();
+                printerr(`[history] Non-image attachment: ${att.name}, type: ${att.type}, url: ${attUrl}`);
+                const attBtn = new Gtk.Button({
+                    label: `\uD83D\uDCCE ${attText}`,
+                    halign: Gtk.Align.START,
+                });
+                attBtn.connect('clicked', () => {
+                    printerr(`[history] Button clicked: ${att.name}`);
+                    const cached = downloader.getCachedAttachment(m.id, att.name || 'attachment');
+                    printerr(`[history] Cached: ${cached}`);
+                    if (cached) {
+                        printerr(`[history] Using cached file: ${cached}`);
+                        const file = Gio.File.new_for_path(cached);
+                        const appInfo = Gio.AppInfo.get_default_for_type(att.type || 'application/octet-stream', false);
+                        printerr(`[history] AppInfo: ${appInfo ? appInfo.get_id() : 'null'}`);
+                        if (appInfo) {
+                            try {
+                                appInfo.launch([file], null);
+                                printerr(`[history] Launched with ${appInfo.get_id()}`);
+                            } catch (e) {
+                                printerr(`[history] Launch error: ${e.message}`);
+                                GLib.spawn_command_line_async(`xdg-open '${cached}'`);
+                            }
+                        } else {
+                            GLib.spawn_command_line_async(`xdg-open '${cached}'`);
+                        }
+                    } else {
+                        printerr(`[history] Not cached, downloading from ${att.url}`);
+                        printerr(`[history] downloader object: ${downloader}`);
+                        printerr(`[history] downloader.downloadAttachment: ${downloader.downloadAttachment}`);
+                        printerr(`[history] Calling downloadAttachment with att=${JSON.stringify(att)}, m.id=${m.id}`);
+                        const result = downloader.downloadAttachment(att, m.id);
+                        printerr(`[history] downloadAttachment returned: ${result}`);
+                        if (result && typeof result.then === 'function') {
+                            result.then(newCachePath => {
+                                printerr(`[history] Download result: ${newCachePath}`);
+                                if (newCachePath) {
+                                    const file = Gio.File.new_for_path(newCachePath);
+                                    const appInfo = Gio.AppInfo.get_default_for_type(att.type || 'application/octet-stream', false);
+                                    printerr(`[history] Opening with: ${appInfo ? appInfo.get_id() : 'null'}`);
+                                    if (appInfo) {
+                                        try {
+                                            appInfo.launch([file], null);
+                                        } catch (e) {
+                                            printerr(`[history] Launch error: ${e.message}`);
+                                            GLib.spawn_command_line_async(`xdg-open '${newCachePath}'`);
+                                        }
+                                    } else {
+                                        GLib.spawn_command_line_async(`xdg-open '${newCachePath}'`);
+                                    }
+                                } else {
+                                    printerr(`[history] Download failed, opening URL`);
+                                    GLib.spawn_command_line_async(`xdg-open '${attUrl}'`);
+                                }
+                            }).catch(e => {
+                                printerr(`[history] Download error: ${e.message}`);
+                                GLib.spawn_command_line_async(`xdg-open '${attUrl}'`);
+                            });
+                        } else {
+                            printerr(`[history] downloadAttachment did not return a Promise: ${result}`);
+                            GLib.spawn_command_line_async(`xdg-open '${attUrl}'`);
+                        }
+                    }
+                });
+                box.append(attBtn);
+            } else if (attUrl && isImage) {
+                // Image attachment: already handled by _createImagePreview above
+            } else if (attUrl) {
+                // Image without cached preview: show button
                 const attBtn = new Gtk.Button({
                     label: `\uD83D\uDCCE ${attText}`,
                     css_classes: ['flat'],
@@ -387,6 +600,54 @@ app.connect('activate', () => {
         // ponytail: action buttons moved to header row (✓ read, ✕ delete)
         row.set_child(box);
         msgListBox.insert(row, atTop ? 0 : -1);
+    }
+
+    // Create image preview widget
+    function _createImagePreview(cachePath, fullUrl, mimeType) {
+        const picture = new Gtk.Picture({
+            halign: Gtk.Align.FILL,
+            valign: Gtk.Align.START,
+            hexpand: true,
+            content_fit: Gtk.ContentFit.SCALE_DOWN,
+            css_classes: ['ntfy-image-preview'],
+        });
+        
+        try {
+            const pixbuf = GdkPixbuf.Pixbuf.new_from_file(cachePath);
+            picture.set_pixbuf(pixbuf);
+        } catch (e) {
+            printerr(`[history] Failed to load image: ${e.message}`);
+            return null;
+        }
+        
+        const gesture = Gtk.GestureClick.new();
+        gesture.connect('pressed', () => {
+            try {
+                const tempDir = GLib.get_tmp_dir();
+                const ext = cachePath.match(/\.([^.]+)$/)?.[1] || (mimeType?.split('/')[1] || 'bin');
+                const tempFile = GLib.build_filenamev([tempDir, `ntfy-${Date.now()}.${ext}`]);
+                const srcFile = Gio.File.new_for_path(cachePath);
+                const destFile = Gio.File.new_for_path(tempFile);
+                if (srcFile.query_exists(null)) {
+                    srcFile.copy(destFile, Gio.FileCopyFlags.OVERWRITE, null, null);
+                    if (destFile.query_exists(null)) {
+                        const file = Gio.File.new_for_path(tempFile);
+                        const appInfo = Gio.AppInfo.get_default_for_type(mimeType || 'application/octet-stream', false);
+                        if (appInfo) {
+                            appInfo.launch([file], null);
+                        } else {
+                            GLib.spawn_command_line_async(`xdg-open '${tempFile}'`);
+                        }
+                    }
+                }
+            } catch (e) {
+                printerr(`[history] Failed to open image: ${e.message}`);
+                GLib.spawn_command_line_async(`xdg-open '${fullUrl}'`);
+            }
+        });
+        picture.add_controller(gesture);
+        
+        return picture;
     }
 
     // === IPC: command file (single file, topicUrl in each line) ===
@@ -436,10 +697,16 @@ app.connect('activate', () => {
                 if (ok && contents) {
                     const data = JSON.parse(new TextDecoder().decode(contents));
                     const notifications = data.notifications || [];
+                    printerr(`[history] Loaded ${notifications.length} messages from ${t}`);
                     for (const m of notifications) {
                         _appendRow(m);
                     }
+                    printerr(`[history] Added ${notifications.length} rows to listbox`);
+                } else {
+                    printerr(`[history] No contents in ${storePath}`);
                 }
+            } else {
+                printerr(`[history] Store file does not exist: ${storePath}`);
             }
         } catch (e) {
             printerr(`[history] Failed to load store for ${t}: ${e.message}`);

@@ -22,7 +22,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import { NtfyApi } from './api.js';
 import { notificationStore } from './notification-store.js';
-import { getApiKey, getServerUrl, parseTopicUrl } from './utils.js';
+import { attachmentDownloader } from './attachment-downloader.js';
+import { getApiKey, parseTopicUrl } from './utils.js';
 
 // Polyfill URL for GNOME 50 MessageTray which references it internally
 if (typeof URL === 'undefined') {
@@ -101,7 +102,7 @@ export class SubscriptionManager {
    */
   subscribe(topicUrl) {
     const { baseUrl, topic } = parseTopicUrl(topicUrl);
-    const serverUrl = baseUrl || getServerUrl(this.settings);
+    const serverUrl = baseUrl || this.settings.get_string('server');
     const apiKey = getApiKey(this.settings, serverUrl);
     
     const fullTopicUrl = `${serverUrl}/${topic}`;
@@ -212,35 +213,57 @@ export class SubscriptionManager {
     this._showNotification(topicUrl, msg);
   }
 
-  /**
-   * Show desktop notification with click action
-   * @param {string} topicUrl - Topic URL
-   * @param {object} msg - Parsed message
-   */
-  _showNotification(topicUrl, msg) {
-    const title = msg.title || `ntfy: ${msg.topic}`;
-    const body = msg.message || '';
-    
-    // ponytail: Source auto-destroys when all notifications are dismissed.
-    // Recreate lazily instead of bailing out when null.
-    if (!this._source) {
-      this._source = new MessageTray.Source({
-        title: 'ntfy',
-        iconName: 'dialog-information-symbolic',
-      });
-      Main.messageTray.add(this._source);
-      this._source.connect('destroy', () => { this._source = null; });
-    }
-    const notification = new MessageTray.Notification({
-      source: this._source,
-      title: title,
-      body: body,
-      iconName: 'dialog-information-symbolic',
-    });
+/**
+    * Show desktop notification with click action
+    * @param {string} topicUrl - Topic URL
+    * @param {object} msg - Parsed message
+    */
+   _showNotification(topicUrl, msg) {
+     const title = msg.title || `ntfy: ${msg.topic}`;
+     const body = msg.message || '';
+     
+     // ponytail: Source auto-destroys when all notifications are dismissed.
+     // Recreate lazily instead of bailing out when null.
+     if (!this._source) {
+       this._source = new MessageTray.Source({
+         title: 'ntfy',
+         iconName: 'dialog-information-symbolic',
+       });
+       Main.messageTray.add(this._source);
+       this._source.connect('destroy', () => { this._source = null; });
+     }
+     
+     // Create notification
+     const notification = new MessageTray.Notification({
+       source: this._source,
+       title: title,
+       body: body,
+     });
+     
+     // Handle image attachments
+     // Note: GNOME Shell notifications don't display large images, only small icons.
+     // Images are shown in the history dialog where we have full GTK4 control.
+     if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('image/')) {
+       log(`[ntfy] Image attachment detected: ${msg.attachment.name} (shown in history dialog)`);
+       // Download for history dialog cache
+       const apiKey = getApiKey(this.settings, topicUrl.replace(/\/[^\/]+$/, ''));
+       const acceptSelfSigned = this.settings.get_boolean('accept-self-signed');
+       
+       attachmentDownloader.downloadAttachment(
+         msg.attachment,
+         msg.id,
+         acceptSelfSigned,
+         apiKey
+       ).then(cachePath => {
+         if (cachePath) {
+           log(`[ntfy] Image cached for history dialog: ${cachePath}`);
+         }
+       });
+     }
     
     // Determine what happens when notification is clicked
     const { baseUrl, topic } = parseTopicUrl(topicUrl);
-    const serverUrl = baseUrl || getServerUrl(this.settings);
+    const serverUrl = baseUrl || this.settings.get_string('server');
     
     log(`[ntfy] Creating notification: title="${title}" topicUrl=${topicUrl} msg.id=${msg.id}`);
     notification.connect('activated', () => {
@@ -306,9 +329,7 @@ export class SubscriptionManager {
     const scriptPath = GLib.build_filenamev([extDir, 'history-dialog.js']);
     
     try {
-      const launcher = new Gio.SubprocessLauncher({
-        flags: Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE
-      });
+      const launcher = new Gio.SubprocessLauncher({});
       const proc = launcher.spawnv(['/usr/bin/gjs', scriptPath, serverUrl, apiKey, String(accept), topic, this.settings.get_strv('channels').join(','), String(isMuted)]);
       this._historyProc = proc;
       this._historyPid = proc.get_identifier();
@@ -396,7 +417,7 @@ export class SubscriptionManager {
    */
   publish(topicUrl, message, options = {}, onSuccess, onError) {
     const { baseUrl, topic } = parseTopicUrl(topicUrl);
-    const serverUrl = baseUrl || getServerUrl(this.settings);
+    const serverUrl = baseUrl || this.settings.get_string('server');
     const apiKey = getApiKey(this.settings, serverUrl);
     
     const api = new NtfyApi(serverUrl, apiKey, this.settings.get_boolean('accept-self-signed'));
