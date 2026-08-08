@@ -168,7 +168,7 @@ app.connect('activate', () => {
     const window = new Adw.ApplicationWindow({
         application: app,
         title: 'ntfy',
-        default_width: 700,
+        default_width: 900,
         default_height: 600,
     });
 
