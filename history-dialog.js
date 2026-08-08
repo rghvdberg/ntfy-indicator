@@ -612,22 +612,16 @@ app.connect('activate', () => {
             halign: Gtk.Align.START,
         });
         
-        const picture = new Gtk.Picture({
-            halign: Gtk.Align.START,
-            valign: Gtk.Align.START,
-            hexpand: false,
-            vexpand: false,
-            content_fit: Gtk.ContentFit.SCALE_DOWN,
-            css_classes: ['ntfy-image-preview'],
-        });
+        // Use new_for_file for proper GTK4 image loading
+        const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
         
-        try {
-            const pixbuf = GdkPixbuf.Pixbuf.new_from_file(cachePath);
-            picture.set_pixbuf(pixbuf);
-        } catch (e) {
-            printerr(`[history] Failed to load image: ${e.message}`);
-            return null;
-        }
+        // Set sizing constraints on the picture
+        picture.set_halign(Gtk.Align.START);
+        picture.set_valign(Gtk.Align.START);
+        picture.set_hexpand(false);
+        picture.set_vexpand(false);
+        picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
+        picture.add_css_class('ntfy-image-preview');
         
         const gesture = Gtk.GestureClick.new();
         gesture.connect('pressed', () => {
