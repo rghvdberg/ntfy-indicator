@@ -607,14 +607,15 @@ app.connect('activate', () => {
     function _createImageContainer(cachePath, fullUrl, mimeType) {
         print(`[history] [IMG] Creating container for: ${cachePath}`);
         
-        // Create a container with CSS-based width
+        // Create a container with CSS-based width - use FILL to expand
         const container = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL,
-            halign: Gtk.Align.START,
+            halign: Gtk.Align.FILL,
+            hexpand: true,
             css_classes: ['ntfy-image-container'],
         });
         
-        print(`[history] [IMG] Container created, halign=${container.get_halign()}, css=${container.get_css_classes().join(',')}`);
+        print(`[history] [IMG] Container created, halign=${container.get_halign()}, hexpand=${container.get_hexpand()}`);
         
         // Use new_for_file for proper GTK4 image loading
         const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
@@ -625,7 +626,7 @@ app.connect('activate', () => {
             print(`[history] [IMG] Paintable size: ${paintable.get_intrinsic_width()}x${paintable.get_intrinsic_height()}`);
         }
         
-        // Set sizing constraints on the picture
+        // Set sizing constraints on the picture - START alignment, no expand
         picture.set_halign(Gtk.Align.START);
         picture.set_valign(Gtk.Align.START);
         picture.set_hexpand(false);
@@ -633,9 +634,9 @@ app.connect('activate', () => {
         picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
         picture.add_css_class('ntfy-image-preview');
         
-        // Try using set_size_request to force a minimum width
+        // Use size_request to set minimum width
         picture.set_size_request(400, -1);
-        print(`[history] [IMG] Size request set to 400x-1`);
+        print(`[history] [IMG] Picture size_request set to 400x-1`);
         
         const gesture = Gtk.GestureClick.new();
         gesture.connect('pressed', () => {
