@@ -308,8 +308,12 @@ app.connect('activate', () => {
     const scrolled = new Gtk.ScrolledWindow({
         vexpand: true,
         hscrollbar_policy: Gtk.PolicyType.NEVER,
-        propagate_natural_width: false,
+        propagate_natural_width: true,
+        vexpand: true,
+        hexpand: true,
     });
+    // Set minimum width for scrolled window to prevent content from shrinking
+    scrolled.set_size_request(500, -1);
     const msgListBox = new Gtk.ListBox({ selection_mode: Gtk.SelectionMode.NONE });
     scrolled.set_child(msgListBox);
     rightBox.append(scrolled);
