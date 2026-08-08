@@ -610,7 +610,6 @@ app.connect('activate', () => {
             valign: Gtk.Align.START,
             hexpand: true,
             width_request: 400,
-            height_request: 300,
             content_fit: Gtk.ContentFit.SCALE_DOWN,
             css_classes: ['ntfy-image-preview'],
         });
