@@ -607,15 +607,14 @@ app.connect('activate', () => {
     function _createImageContainer(cachePath, fullUrl, mimeType) {
         print(`[history] [IMG] Creating container for: ${cachePath}`);
         
-        // Create a container with CSS-based width - use FILL to expand
+        // Create a container - will set width after adding to parent
         const container = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL,
-            halign: Gtk.Align.FILL,
-            hexpand: true,
+            halign: Gtk.Align.START,
             css_classes: ['ntfy-image-container'],
         });
         
-        print(`[history] [IMG] Container created, halign=${container.get_halign()}, hexpand=${container.get_hexpand()}`);
+        print(`[history] [IMG] Container created`);
         
         // Use new_for_file for proper GTK4 image loading
         const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
@@ -623,7 +622,12 @@ app.connect('activate', () => {
         // Get the paintable to check image size
         const paintable = picture.get_paintable();
         if (paintable) {
-            print(`[history] [IMG] Paintable size: ${paintable.get_intrinsic_width()}x${paintable.get_intrinsic_height()}`);
+            const iw = paintable.get_intrinsic_width();
+            const ih = paintable.get_intrinsic_height();
+            print(`[history] [IMG] Paintable intrinsic size: ${iw}x${ih}`);
+            // Use the smaller of 400 or intrinsic width
+            const targetWidth = Math.min(400, iw);
+            print(`[history] [IMG] Target width: ${targetWidth}`);
         }
         
         // Set sizing constraints on the picture - START alignment, no expand
@@ -634,9 +638,9 @@ app.connect('activate', () => {
         picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
         picture.add_css_class('ntfy-image-preview');
         
-        // Use size_request to set minimum width
+        // Force minimum size using size_request
         picture.set_size_request(400, -1);
-        print(`[history] [IMG] Picture size_request set to 400x-1`);
+        print(`[history] [IMG] Picture size_request: 400x-1`);
         
         const gesture = Gtk.GestureClick.new();
         gesture.connect('pressed', () => {
@@ -666,7 +670,22 @@ app.connect('activate', () => {
         picture.add_controller(gesture);
         
         container.append(picture);
-        print(`[history] [IMG] Picture appended to container`);
+        print(`[history] [IMG] Picture appended, will allocate width after parent assignment`);
+        
+        // Connect to realize signal to set allocation after widget is in the hierarchy
+        container.connect('realize', (widget) => {
+            try {
+                const alloc = widget.get_allocation_box();
+                print(`[history] [IMG] Container allocated: ${alloc.x} ${alloc.y} ${alloc.width} ${alloc.height}`);
+                // Try to reallocate with fixed width
+                const transform = new Gsk.Transform();
+                widget.allocate(transform, 400, -1, -1);
+                print(`[history] [IMG] Reallocated container to width 400`);
+            } catch (e) {
+                printerr(`[history] [IMG] Allocation error: ${e.message}`);
+            }
+        });
+        
         return container;
     }
 
