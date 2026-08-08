@@ -619,7 +619,11 @@ app.connect('activate', () => {
         // Use new_for_file for proper GTK4 image loading
         const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
         
-        print(`[history] [IMG] Picture created, natural size: ${picture.get_natural_width()}x${picture.get_natural_height()}`);
+        // Get the paintable to check image size
+        const paintable = picture.get_paintable();
+        if (paintable) {
+            print(`[history] [IMG] Paintable size: ${paintable.get_intrinsic_width()}x${paintable.get_intrinsic_height()}`);
+        }
         
         // Set sizing constraints on the picture
         picture.set_halign(Gtk.Align.START);
@@ -631,7 +635,7 @@ app.connect('activate', () => {
         
         // Try using set_size_request to force a minimum width
         picture.set_size_request(400, -1);
-        print(`[history] [IMG] Size request set to 400x-1, current: ${picture.get_width()}x${picture.get_height()}`);
+        print(`[history] [IMG] Size request set to 400x-1`);
         
         const gesture = Gtk.GestureClick.new();
         gesture.connect('pressed', () => {
@@ -661,7 +665,7 @@ app.connect('activate', () => {
         picture.add_controller(gesture);
         
         container.append(picture);
-        print(`[history] [IMG] Picture appended to container, container width_request: ${container.get_width_request()}`);
+        print(`[history] [IMG] Picture appended to container`);
         return container;
     }
 
