@@ -493,10 +493,11 @@ app.connect('activate', () => {
                 // Download asynchronously
                 downloader.downloadAttachment(m.attachment, m.id).then(cachePath => {
                     if (cachePath) {
-const picture = _createImagePreview(cachePath, m.attachment.url, m.attachment.type);
+                        const picture = _createImagePreview(cachePath, m.attachment.url, m.attachment.type);
                         if (picture) {
-                            placeholder.destroy();
-                            box.insert_child_before(picture, null);
+                            // Properly replace placeholder: remove first, then append new widget
+                            box.remove(placeholder);
+                            box.append(picture);
                         }
                     }
                 });

@@ -19,3 +19,15 @@
   padding: 0 8px;
   min-height: 24px;
 }
+
+/* Image preview in history dialog */
+.ntfy-image-preview {
+  border-radius: 4px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.ntfy-image-loading {
+  background: rgba(128, 128, 128, 0.2);
+  border-radius: 4px;
+}
