@@ -21,6 +21,12 @@
 }
 
 /* Image preview in history dialog */
+.ntfy-image-container {
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
+}
+
 .ntfy-image-preview {
   border-radius: 4px;
   margin-top: 4px;

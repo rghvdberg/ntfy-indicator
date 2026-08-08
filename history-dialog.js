@@ -605,11 +605,11 @@ app.connect('activate', () => {
 
     // Create image container with fixed width wrapper
     function _createImageContainer(cachePath, fullUrl, mimeType) {
-        // Create a fixed-width container to prevent shrinking
+        // Create a container with CSS-based width
         const container = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL,
-            width_request: 400,
             halign: Gtk.Align.START,
+            css_classes: ['ntfy-image-container'],
         });
         
         // Use new_for_file for proper GTK4 image loading
