@@ -467,10 +467,10 @@ app.connect('activate', () => {
             const cachePath = downloader.getCachedAttachment(m.id, m.attachment.name || 'image');
             
             if (cachePath) {
-                // Show cached image immediately
-                const picture = _createImagePreview(cachePath, m.attachment.url);
-                if (picture) {
-                    box.append(picture);
+                // Show cached image immediately in a container
+                const container = _createImageContainer(cachePath, m.attachment.url);
+                if (container) {
+                    box.append(container);
                 }
             } else {
                 // Show loading placeholder, download async
@@ -478,7 +478,7 @@ app.connect('activate', () => {
                     orientation: Gtk.Orientation.VERTICAL,
                     css_classes: ['ntfy-image-loading'],
                     halign: Gtk.Align.START,
-                    width_request: 200,
+                    width_request: 400,
                     height_request: 100,
                 });
                 const loadingLabel = new Gtk.Label({
@@ -493,11 +493,11 @@ app.connect('activate', () => {
                 // Download asynchronously
                 downloader.downloadAttachment(m.attachment, m.id).then(cachePath => {
                     if (cachePath) {
-                        const picture = _createImagePreview(cachePath, m.attachment.url, m.attachment.type);
-                        if (picture) {
+                        const container = _createImageContainer(cachePath, m.attachment.url, m.attachment.type);
+                        if (container) {
                             // Properly replace placeholder: remove first, then append new widget
                             box.remove(placeholder);
-                            box.append(picture);
+                            box.append(container);
                         }
                     }
                 });
@@ -603,13 +603,20 @@ app.connect('activate', () => {
         msgListBox.insert(row, atTop ? 0 : -1);
     }
 
-    // Create image preview widget
-    function _createImagePreview(cachePath, fullUrl, mimeType) {
-        const picture = new Gtk.Picture({
-            halign: Gtk.Align.FILL,
-            valign: Gtk.Align.START,
-            hexpand: true,
+    // Create image container with fixed width wrapper
+    function _createImageContainer(cachePath, fullUrl, mimeType) {
+        // Create a fixed-width container to prevent shrinking
+        const container = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
             width_request: 400,
+            halign: Gtk.Align.START,
+        });
+        
+        const picture = new Gtk.Picture({
+            halign: Gtk.Align.START,
+            valign: Gtk.Align.START,
+            hexpand: false,
+            vexpand: false,
             content_fit: Gtk.ContentFit.SCALE_DOWN,
             css_classes: ['ntfy-image-preview'],
         });
@@ -649,7 +656,8 @@ app.connect('activate', () => {
         });
         picture.add_controller(gesture);
         
-        return picture;
+        container.append(picture);
+        return container;
     }
 
     // === IPC: command file (single file, topicUrl in each line) ===

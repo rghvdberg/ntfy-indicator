@@ -25,13 +25,9 @@
   border-radius: 4px;
   margin-top: 4px;
   margin-bottom: 4px;
-  max-width: 100%;
-  max-height: 300px;
 }
 
 .ntfy-image-loading {
   background: rgba(128, 128, 128, 0.2);
   border-radius: 4px;
-  max-width: 100%;
-  max-height: 300px;
 }
