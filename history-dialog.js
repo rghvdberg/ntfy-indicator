@@ -474,11 +474,30 @@ app.connect('activate', () => {
             const cachePath = downloader.getCachedAttachment(m.id, m.attachment.name || 'image');
             
             if (cachePath) {
-                // Show cached image immediately in a container
-                const container = _createImageContainer(cachePath, m.attachment.url);
-                if (container) {
-                    box.append(container);
-                }
+                // Show cached image immediately
+                const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
+                picture.set_halign(Gtk.Align.START);
+                picture.set_valign(Gtk.Align.START);
+                picture.set_hexpand(false);
+                picture.set_vexpand(false);
+                picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
+                picture.set_size_request(400, -1);
+                picture.add_css_class('ntfy-image-preview');
+                
+                const gesture = Gtk.GestureClick.new();
+                gesture.connect('pressed', () => {
+                    try {
+                        const tempDir = GLib.get_tmp_dir();
+                        const ext = cachePath.match(/\.([^.]+)$/)?.[1] || 'png';
+                        const tempFile = GLib.build_filenamev([tempDir, `ntfy-${Date.now()}.${ext}`]);
+                        Gio.File.new_for_path(cachePath).copy(Gio.File.new_for_path(tempFile), Gio.FileCopyFlags.OVERWRITE, null, null);
+                        GLib.spawn_command_line_async(`xdg-open '${tempFile}'`);
+                    } catch (e) {
+                        printerr(`[history] Failed to open image: ${e.message}`);
+                    }
+                });
+                picture.add_controller(gesture);
+                box.append(picture);
             } else {
                 // Show loading placeholder, download async
                 const placeholder = new Gtk.Box({
@@ -500,12 +519,31 @@ app.connect('activate', () => {
                 // Download asynchronously
                 downloader.downloadAttachment(m.attachment, m.id).then(cachePath => {
                     if (cachePath) {
-                        const container = _createImageContainer(cachePath, m.attachment.url, m.attachment.type);
-                        if (container) {
-                            // Properly replace placeholder: remove first, then append new widget
-                            box.remove(placeholder);
-                            box.append(container);
-                        }
+                        const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
+                        picture.set_halign(Gtk.Align.START);
+                        picture.set_valign(Gtk.Align.START);
+                        picture.set_hexpand(false);
+                        picture.set_vexpand(false);
+                        picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
+                        picture.set_size_request(400, -1);
+                        picture.add_css_class('ntfy-image-preview');
+                        
+                        const gesture = Gtk.GestureClick.new();
+                        gesture.connect('pressed', () => {
+                            try {
+                                const tempDir = GLib.get_tmp_dir();
+                                const ext = cachePath.match(/\.([^.]+)$/)?.[1] || 'png';
+                                const tempFile = GLib.build_filenamev([tempDir, `ntfy-${Date.now()}.${ext}`]);
+                                Gio.File.new_for_path(cachePath).copy(Gio.File.new_for_path(tempFile), Gio.FileCopyFlags.OVERWRITE, null, null);
+                                GLib.spawn_command_line_async(`xdg-open '${tempFile}'`);
+                            } catch (e) {
+                                printerr(`[history] Failed to open image: ${e.message}`);
+                            }
+                        });
+                        picture.add_controller(gesture);
+                        
+                        box.remove(placeholder);
+                        box.append(picture);
                     }
                 });
             }
