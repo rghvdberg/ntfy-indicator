@@ -315,6 +315,7 @@ app.connect('activate', () => {
     // Set minimum width for scrolled window to prevent content from shrinking
     scrolled.set_size_request(500, -1);
     const msgListBox = new Gtk.ListBox({ selection_mode: Gtk.SelectionMode.NONE });
+    msgListBox.set_size_request(500, -1);
     scrolled.set_child(msgListBox);
     rightBox.append(scrolled);
 
