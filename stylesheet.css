@@ -22,8 +22,6 @@
 
 /* Image preview in history dialog */
 .ntfy-image-preview {
-  min-width: 400px;
-  max-width: 400px;
   border-radius: 4px;
   margin-top: 4px;
   margin-bottom: 4px;

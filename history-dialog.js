@@ -308,14 +308,9 @@ app.connect('activate', () => {
     const scrolled = new Gtk.ScrolledWindow({
         vexpand: true,
         hscrollbar_policy: Gtk.PolicyType.NEVER,
-        propagate_natural_width: true,
-        vexpand: true,
-        hexpand: true,
+        propagate_natural_width: false,
     });
-    // Set minimum width for scrolled window to prevent content from shrinking
-    scrolled.set_size_request(500, -1);
     const msgListBox = new Gtk.ListBox({ selection_mode: Gtk.SelectionMode.NONE });
-    msgListBox.set_size_request(500, -1);
     scrolled.set_child(msgListBox);
     rightBox.append(scrolled);
 
@@ -376,8 +371,6 @@ app.connect('activate', () => {
             margin_start: 12,
             margin_end: 12,
         });
-        // Force minimum width for the message box to prevent image shrinking
-        box.set_size_request(450, -1);
 
         let dotLabel = null, readBtn = null, titleLabel = null, msgLabel = null, tagsLabel = null;
 
@@ -475,28 +468,10 @@ app.connect('activate', () => {
             
             if (cachePath) {
                 // Show cached image immediately
-                const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
-                picture.set_halign(Gtk.Align.START);
-                picture.set_valign(Gtk.Align.START);
-                picture.set_hexpand(false);
-                picture.set_vexpand(false);
-                picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
-                picture.add_css_class('ntfy-image-preview');
-                
-                const gesture = Gtk.GestureClick.new();
-                gesture.connect('pressed', () => {
-                    try {
-                        const tempDir = GLib.get_tmp_dir();
-                        const ext = cachePath.match(/\.([^.]+)$/)?.[1] || 'png';
-                        const tempFile = GLib.build_filenamev([tempDir, `ntfy-${Date.now()}.${ext}`]);
-                        Gio.File.new_for_path(cachePath).copy(Gio.File.new_for_path(tempFile), Gio.FileCopyFlags.OVERWRITE, null, null);
-                        GLib.spawn_command_line_async(`xdg-open '${tempFile}'`);
-                    } catch (e) {
-                        printerr(`[history] Failed to open image: ${e.message}`);
-                    }
-                });
-                picture.add_controller(gesture);
-                box.append(picture);
+                const picture = _createImagePicture(cachePath);
+                if (picture) {
+                    box.append(picture);
+                }
             } else {
                 // Show loading placeholder, download async
                 const placeholder = new Gtk.Box({
@@ -518,30 +493,11 @@ app.connect('activate', () => {
                 // Download asynchronously
                 downloader.downloadAttachment(m.attachment, m.id).then(cachePath => {
                     if (cachePath) {
-                        const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
-                        picture.set_halign(Gtk.Align.START);
-                        picture.set_valign(Gtk.Align.START);
-                        picture.set_hexpand(false);
-                        picture.set_vexpand(false);
-                        picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
-                        picture.add_css_class('ntfy-image-preview');
-                        
-                        const gesture = Gtk.GestureClick.new();
-                        gesture.connect('pressed', () => {
-                            try {
-                                const tempDir = GLib.get_tmp_dir();
-                                const ext = cachePath.match(/\.([^.]+)$/)?.[1] || 'png';
-                                const tempFile = GLib.build_filenamev([tempDir, `ntfy-${Date.now()}.${ext}`]);
-                                Gio.File.new_for_path(cachePath).copy(Gio.File.new_for_path(tempFile), Gio.FileCopyFlags.OVERWRITE, null, null);
-                                GLib.spawn_command_line_async(`xdg-open '${tempFile}'`);
-                            } catch (e) {
-                                printerr(`[history] Failed to open image: ${e.message}`);
-                            }
-                        });
-                        picture.add_controller(gesture);
-                        
-                        box.remove(placeholder);
-                        box.append(picture);
+                        const picture = _createImagePicture(cachePath);
+                        if (picture) {
+                            box.remove(placeholder);
+                            box.append(picture);
+                        }
                     }
                 });
             }
@@ -622,7 +578,7 @@ app.connect('activate', () => {
                 });
                 box.append(attBtn);
             } else if (attUrl && isImage) {
-                // Image attachment: already handled by _createImagePreview above
+                // Image attachment: already handled by _createImagePicture above
             } else if (attUrl) {
                 // Image without cached preview: show button
                 const attBtn = new Gtk.Button({
@@ -646,67 +602,66 @@ app.connect('activate', () => {
         msgListBox.insert(row, atTop ? 0 : -1);
     }
 
-    // Create image container with fixed width wrapper
-    function _createImageContainer(cachePath, fullUrl, mimeType) {
-        print(`[history] [IMG] Creating container for: ${cachePath}`);
-        
-        // Create a container with FIXED width using size_request
-        const container = new Gtk.Box({
-            orientation: Gtk.Orientation.VERTICAL,
-        });
-        // Force the container to be exactly 400px wide
-        container.set_size_request(400, -1);
-        print(`[history] [IMG] Container size_request set to 400x-1`);
-        
-        // Use new_for_file for proper GTK4 image loading
-        const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
-        
-        // Get the paintable to check image size
-        const paintable = picture.get_paintable();
-        if (paintable) {
-            const iw = paintable.get_intrinsic_width();
-            const ih = paintable.get_intrinsic_height();
-            print(`[history] [IMG] Paintable intrinsic size: ${iw}x${ih}`);
-        }
-        
-        // Picture should fill the container width, scale down for height
-        picture.set_halign(Gtk.Align.FILL);
-        picture.set_valign(Gtk.Align.START);
-        picture.set_hexpand(false);
-        picture.set_vexpand(false);
-        picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
-        picture.add_css_class('ntfy-image-preview');
-        
-        const gesture = Gtk.GestureClick.new();
-        gesture.connect('pressed', () => {
-            try {
-                const tempDir = GLib.get_tmp_dir();
-                const ext = cachePath.match(/\.([^.]+)$/)?.[1] || (mimeType?.split('/')[1] || 'bin');
-                const tempFile = GLib.build_filenamev([tempDir, `ntfy-${Date.now()}.${ext}`]);
-                const srcFile = Gio.File.new_for_path(cachePath);
-                const destFile = Gio.File.new_for_path(tempFile);
-                if (srcFile.query_exists(null)) {
-                    srcFile.copy(destFile, Gio.FileCopyFlags.OVERWRITE, null, null);
-                    if (destFile.query_exists(null)) {
-                        const file = Gio.File.new_for_path(tempFile);
-                        const appInfo = Gio.AppInfo.get_default_for_type(mimeType || 'application/octet-stream', false);
-                        if (appInfo) {
-                            appInfo.launch([file], null);
-                        } else {
+    // Create an image preview with explicit pixel size (immune to layout shrinking).
+    // Scales the pixbuf so width <= 400 and height <= 300, preserving aspect
+    // ratio, then pins the widget to those exact dimensions.
+    function _createImagePicture(cachePath) {
+        try {
+            const pixbuf = GdkPixbuf.Pixbuf.new_from_file(cachePath);
+            const iw = pixbuf.get_width();
+            const ih = pixbuf.get_height();
+            if (iw <= 0 || ih <= 0) {
+                printerr(`[history] Invalid image dimensions ${iw}x${ih}: ${cachePath}`);
+                return null;
+            }
+
+            const MAX_W = 400;
+            const MAX_H = 300;
+            let w = iw;
+            let h = ih;
+            const scale = Math.min(1, MAX_W / iw, MAX_H / ih);
+            if (scale < 1) {
+                w = Math.round(iw * scale);
+                h = Math.round(ih * scale);
+            }
+
+            const picture = new Gtk.Picture({
+                halign: Gtk.Align.START,
+                valign: Gtk.Align.START,
+                hexpand: false,
+                vexpand: false,
+                content_fit: Gtk.ContentFit.SCALE_DOWN,
+                css_classes: ['ntfy-image-preview'],
+            });
+            picture.set_pixbuf(pixbuf);
+            // Pin the exact scaled size so the layout cannot shrink it.
+            picture.set_size_request(w, h);
+
+            const gesture = Gtk.GestureClick.new();
+            gesture.connect('pressed', () => {
+                try {
+                    const tempDir = GLib.get_tmp_dir();
+                    const ext = cachePath.match(/\.([^.]+)$/)?.[1] || 'png';
+                    const tempFile = GLib.build_filenamev([tempDir, `ntfy-${Date.now()}.${ext}`]);
+                    const srcFile = Gio.File.new_for_path(cachePath);
+                    const destFile = Gio.File.new_for_path(tempFile);
+                    if (srcFile.query_exists(null)) {
+                        srcFile.copy(destFile, Gio.FileCopyFlags.OVERWRITE, null, null);
+                        if (destFile.query_exists(null)) {
                             GLib.spawn_command_line_async(`xdg-open '${tempFile}'`);
                         }
                     }
+                } catch (e) {
+                    printerr(`[history] Failed to open image: ${e.message}`);
                 }
-            } catch (e) {
-                printerr(`[history] Failed to open image: ${e.message}`);
-                GLib.spawn_command_line_async(`xdg-open '${fullUrl}'`);
-            }
-        });
-        picture.add_controller(gesture);
-        
-        container.append(picture);
-        print(`[history] [IMG] Container with picture created`);
-        return container;
+            });
+            picture.add_controller(gesture);
+
+            return picture;
+        } catch (e) {
+            printerr(`[history] Failed to load image: ${e.message}`);
+            return null;
+        }
     }
 
     // === IPC: command file (single file, topicUrl in each line) ===
