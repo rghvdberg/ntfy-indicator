@@ -217,7 +217,7 @@ app.connect('activate', () => {
             }
             child = child.get_next_sibling();
         }
-        _updateTopicCount(currentTopic);
+        _setTopicCount(currentTopic, 0);
     });
     actions.add_action(readAllAction);
 
@@ -230,7 +230,7 @@ app.connect('activate', () => {
             msgListBox.remove(child);
             child = next;
         }
-        _updateTopicCount(currentTopic);
+        _setTopicCount(currentTopic, 0);
     });
     actions.add_action(deleteAllAction);
 
@@ -291,6 +291,37 @@ app.connect('activate', () => {
         }
     }
     _loadTopicCounts();
+
+    // Watch store files so external changes (deleted/read elsewhere) refresh
+    // counts and the current topic's rows.
+    let _storeReloadTimer = 0;
+    function _onStoreFileChanged() {
+        if (_storeReloadTimer) return; // debounce: already scheduled
+        _storeReloadTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+            _storeReloadTimer = 0;
+            _loadTopicCounts();
+            _loadMessages(currentTopic);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+    const _storeMonitors = [];
+    const storeDirPath = _storePath(allTopics[0]).split('/').slice(0, -1).join('/');
+    try {
+        const monitor = Gio.File.new_for_path(storeDirPath).monitor_directory(
+            Gio.FileMonitorFlags.NONE, null);
+        if (monitor)
+            monitor.connect('changed', (_m, file, _o, e) => {
+                if (e !== Gio.FileMonitorEvent.CHANGED &&
+                    e !== Gio.FileMonitorEvent.CREATED &&
+                    e !== Gio.FileMonitorEvent.DELETED &&
+                    e !== Gio.FileMonitorEvent.RENAMED) return;
+                if (!allTopics.some(t => _storePath(t) === file.get_path()))
+                    return;
+                _onStoreFileChanged();
+            });
+        _storeMonitors.push(monitor);
+        window._storeMonitors = _storeMonitors; // keep alive: GC would drop the inotify watch
+    } catch (e) { /* skip */ }
 
     sidebar.append(topicListBox);
 
@@ -401,18 +432,21 @@ app.connect('activate', () => {
         readBtn.connect('clicked', () => {
             _sendCommand('markRead', { id: m.id });
             _markReadInStore(currentTopic, m.id);
-            m.new = 0;
+            if (m.new !== false && m.new !== 0) {
+                m.new = 0;
+                _setTopicCount(currentTopic, Math.max(0, (topicCounts[currentTopic] || 0) - 1));
+            }
             if (dotLabel) headerBox.remove(dotLabel);
             readBtn.set_visible(false);
-            _updateTopicCount(currentTopic);
         });
         headerBox.append(readBtn);
 
         const delBtn = new Gtk.Button({ label: '\u2715', css_classes: ['flat', 'caption'] });
         delBtn.connect('clicked', () => {
             _sendCommand('delete', { id: m.id });
+            if (m.new !== false && m.new !== 0)
+                _setTopicCount(currentTopic, Math.max(0, (topicCounts[currentTopic] || 0) - 1));
             msgListBox.remove(row);
-            _updateTopicCount(currentTopic);
         });
         headerBox.append(delBtn);
 
@@ -477,8 +511,8 @@ app.connect('activate', () => {
                 const placeholder = new Gtk.Box({
                     orientation: Gtk.Orientation.VERTICAL,
                     css_classes: ['ntfy-image-loading'],
-                    halign: Gtk.Align.START,
-                    width_request: 400,
+                    hexpand: true,
+                    halign: Gtk.Align.FILL,
                     height_request: 100,
                 });
                 const loadingLabel = new Gtk.Label({
@@ -602,9 +636,9 @@ app.connect('activate', () => {
         msgListBox.insert(row, atTop ? 0 : -1);
     }
 
-    // Create an image preview with explicit pixel size (immune to layout shrinking).
-    // Scales the pixbuf so width <= 400 and height <= 300, preserving aspect
-    // ratio, then pins the widget to those exact dimensions.
+    // Create an image preview like the ntfy webapp (Notifications.jsx): the
+    // image fills the row width (scales with the window), height is capped
+    // at 400px, cover-cropped, click opens the original image.
     function _createImagePicture(cachePath) {
         try {
             const pixbuf = GdkPixbuf.Pixbuf.new_from_file(cachePath);
@@ -615,27 +649,54 @@ app.connect('activate', () => {
                 return null;
             }
 
-            const MAX_W = 400;
-            const MAX_H = 300;
-            let w = iw;
-            let h = ih;
-            const scale = Math.min(1, MAX_W / iw, MAX_H / ih);
-            if (scale < 1) {
-                w = Math.round(iw * scale);
-                h = Math.round(ih * scale);
-            }
+            const MAX_H = 400;
 
             const picture = new Gtk.Picture({
-                halign: Gtk.Align.START,
+                hexpand: true,
+                halign: Gtk.Align.FILL,
                 valign: Gtk.Align.START,
-                hexpand: false,
                 vexpand: false,
-                content_fit: Gtk.ContentFit.SCALE_DOWN,
+                can_shrink: true,
+                content_fit: Gtk.ContentFit.COVER,
                 css_classes: ['ntfy-image-preview'],
             });
             picture.set_pixbuf(pixbuf);
-            // Pin the exact scaled size so the layout cannot shrink it.
-            picture.set_size_request(w, h);
+            // Nominal request; width min stays 0 so the window keeps its
+            // freedom to resize (no min-width lock).
+            picture.set_size_request(0, 0);
+
+            // No GTK4 size-allocate signal, so sync the height to the
+            // allocated width while mapped (objectFit: cover + maxHeight).
+            let lastH = -1;
+            let syncTimer = 0;
+            const syncHeight = () => {
+                const w = picture.get_width();
+                if (w > 0) {
+                    const h = Math.max(1, Math.min(MAX_H, Math.round(w * (ih / iw))));
+                    if (h !== lastH) {
+                        lastH = h;
+                        // Pin height only (min width 0) → no window min-width lock.
+                        picture.set_size_request(0, h);
+                    }
+                }
+            };
+            picture.connect('map', () => {
+                syncHeight();
+                GLib.idle_add(GLib.PRIORITY_LOW, syncHeight);
+                if (syncTimer) GLib.source_remove(syncTimer);
+                syncTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                    if (!picture.get_mapped())
+                        return GLib.SOURCE_REMOVE;
+                    syncHeight();
+                    return GLib.SOURCE_CONTINUE;
+                });
+            });
+            picture.connect('unmap', () => {
+                if (syncTimer) {
+                    GLib.source_remove(syncTimer);
+                    syncTimer = 0;
+                }
+            });
 
             const gesture = Gtk.GestureClick.new();
             gesture.connect('pressed', () => {
@@ -728,6 +789,11 @@ app.connect('activate', () => {
     }
 
     // === Update topic count in sidebar ===
+    function _setTopicCount(t, unread) {
+        topicCounts[t] = unread;
+        topicItems[t].countLabel.set_text(unread > 0 ? String(unread) : '');
+    }
+
     function _updateTopicCount(t) {
         const storePath = _storePath(t);
         try {
@@ -736,8 +802,7 @@ app.connect('activate', () => {
                 if (ok && contents) {
                     const data = JSON.parse(new TextDecoder().decode(contents));
                     const unread = (data.notifications || []).filter(n => n.new !== false && n.new !== 0).length;
-                    topicCounts[t] = unread;
-                    topicItems[t].countLabel.set_text(unread > 0 ? String(unread) : '');
+                    _setTopicCount(t, unread);
                 }
             }
         } catch (e) { /* skip */ }

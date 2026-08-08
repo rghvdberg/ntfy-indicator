@@ -104,7 +104,10 @@ class Indicator extends PanelMenu.Button {
       try { this._updateButtonText(); } catch (e) { logError(e, '[ntfy] _updateButtonText failed'); }
     };
     subscriptionManager.addConnectionListener(this._connectionListener);
-    notificationStore.setOnChange(() => this._rebuildMenu());
+    notificationStore.setOnChange(() => {
+      this._rebuildMenu();
+      try { this._updateButtonText(); } catch (e) { logError(e, '[ntfy] _updateButtonText failed'); }
+    });
   }
 
   _syncChannels() {

@@ -355,7 +355,7 @@ export class SubscriptionManager {
       GLib.file_set_contents(cmdPath, '');
     }
 
-    GLib.timeout_add(GLib.PRIORITY_LOW, 500, () => {
+    GLib.timeout_add(GLib.PRIORITY_LOW, 150, () => {
       // Check if dialog is still alive
       if (!this._historyPid || !GLib.file_test(`/proc/${this._historyPid}`, GLib.FileTest.EXISTS)) {
         return GLib.SOURCE_REMOVE;
