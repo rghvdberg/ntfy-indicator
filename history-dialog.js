@@ -371,6 +371,8 @@ app.connect('activate', () => {
             margin_start: 12,
             margin_end: 12,
         });
+        // Force minimum width for the message box to prevent image shrinking
+        box.set_size_request(450, -1);
 
         let dotLabel = null, readBtn = null, titleLabel = null, msgLabel = null, tagsLabel = null;
 
