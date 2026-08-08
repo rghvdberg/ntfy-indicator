@@ -476,12 +476,11 @@ app.connect('activate', () => {
             if (cachePath) {
                 // Show cached image immediately
                 const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
-                picture.set_halign(Gtk.Align.FILL);
+                picture.set_halign(Gtk.Align.START);
                 picture.set_valign(Gtk.Align.START);
-                picture.set_hexpand(true);
+                picture.set_hexpand(false);
                 picture.set_vexpand(false);
                 picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
-                picture.set_size_request(400, -1);
                 picture.add_css_class('ntfy-image-preview');
                 
                 const gesture = Gtk.GestureClick.new();
@@ -503,7 +502,7 @@ app.connect('activate', () => {
                 const placeholder = new Gtk.Box({
                     orientation: Gtk.Orientation.VERTICAL,
                     css_classes: ['ntfy-image-loading'],
-                    halign: Gtk.Align.FILL,
+                    halign: Gtk.Align.START,
                     width_request: 400,
                     height_request: 100,
                 });
@@ -520,12 +519,11 @@ app.connect('activate', () => {
                 downloader.downloadAttachment(m.attachment, m.id).then(cachePath => {
                     if (cachePath) {
                         const picture = Gtk.Picture.new_for_file(Gio.File.new_for_path(cachePath));
-                        picture.set_halign(Gtk.Align.FILL);
+                        picture.set_halign(Gtk.Align.START);
                         picture.set_valign(Gtk.Align.START);
-                        picture.set_hexpand(true);
+                        picture.set_hexpand(false);
                         picture.set_vexpand(false);
                         picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN);
-                        picture.set_size_request(400, -1);
                         picture.add_css_class('ntfy-image-preview');
                         
                         const gesture = Gtk.GestureClick.new();
