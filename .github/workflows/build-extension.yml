@@ -1,0 +1,55 @@
+name: Build and Upload GNOME Extension
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package extension
+        id: package
+        uses: murar8/gnome-extensions-action@0.1.1
+        with:
+          source-dir: .
+          output-dir: ./build
+          extra-source: |
+            schemas/org.gnome.shell.extensions.ntfy-indicator.gschema.xml
+            icons/ntfy.svg
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntfy-indicator@rghvdberg
+          path: ${{ steps.package.outputs.zip-file }}
+          if-no-files-found: error
+
+      - name: Attach zip to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.zip-file }}
+
+  upload-ego:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package and Upload to extensions.gnome.org
+        uses: murar8/gnome-extensions-action@0.1.1
+        with:
+          source-dir: .
+          username: ${{ secrets.GNOME_USERNAME }}
+          password: ${{ secrets.GNOME_PASSWORD }}
+          accept-tos: true
+          extra-source: |
+            schemas/org.gnome.shell.extensions.ntfy-indicator.gschema.xml
+            icons/ntfy.svg
