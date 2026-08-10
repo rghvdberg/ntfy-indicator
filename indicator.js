@@ -112,10 +112,9 @@ class Indicator extends PanelMenu.Button {
       else if (key === 'server' || key === 'api-keys' || key === 'accept-self-signed') this._restartSubscriptions();
     });
 
-    this._connectionListener = () => {
+    subscriptionManager.setConnectionChange(() => {
       this._updateButtonText().catch(e => debugLog('[ntfy] _updateButtonText failed:', e));
-    };
-    subscriptionManager.addConnectionListener(this._connectionListener);
+    });
     notificationStore.setOnChange(() => {
       this._rebuildMenu().catch(e => debugLog('[ntfy] _rebuildMenu failed:', e));
       this._updateButtonText().catch(e => debugLog('[ntfy] _updateButtonText failed:', e));
@@ -161,7 +160,7 @@ class Indicator extends PanelMenu.Button {
     this._destroyed = true;
     if (this._settingsChangedId)
       this.settings.disconnect(this._settingsChangedId);
-    subscriptionManager.removeConnectionListener(this._connectionListener);
+    subscriptionManager.setConnectionChange(null);
     subscriptionManager.unsubscribeAll();
     super.destroy();
   }

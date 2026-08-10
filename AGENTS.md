@@ -1,5 +1,12 @@
 # ntfy GNOME Shell Extension — Project Conventions
 
+## Environment constraints
+
+- No read/write access outside the current repo directory. Do not create,
+  modify, or delete files elsewhere (including `build/` output dirs that exceed
+  the repo, `/tmp`, and VM paths) without explicit approval. Everything runs
+  from the project root; deploy artifacts live under the repo itself.
+
 ## Project goal
 
 A GNOME Shell 50 extension that brings ntfy push notifications to the desktop.

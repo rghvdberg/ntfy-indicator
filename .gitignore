@@ -4,10 +4,15 @@ schemas/gschemas.compiled
 # Dev-only files (not published)
 server.yml
 vm-sync.sh
+send-test-messages.sh
 SESSION.md
 NOTES.md
 INSTALL.md
 PLAN.md
+
+# Build / test artifacts
+build/
+test-images/
 
 # Editor/OS
 *.swp

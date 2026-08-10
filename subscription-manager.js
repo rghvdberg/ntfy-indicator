@@ -47,8 +47,8 @@ if (typeof URL === 'undefined') {
 export class SubscriptionManager {
   constructor(settings) {
     this.settings = settings;
-    this.subscriptions = {}; // Map of topicUrl -> { api, subscription, lastMessageId }
-    this.connectionListeners = [];
+    this.subscriptions = {}; // Map of topicUrl -> subscription
+    this._connectionChange = null;
     this._historyPid = null;
     this._historyTopic = null;
     
@@ -62,33 +62,20 @@ export class SubscriptionManager {
   }
 
   /**
-   * Add connection listener
-   * @param {function} callback - Called when connection state changes
+   * Set connection state callback
+   * @param {function} callback - Called with (topicUrl, connected) on changes
    */
-  addConnectionListener(callback) {
-    this.connectionListeners.push(callback);
+  setConnectionChange(callback) {
+    this._connectionChange = callback;
   }
 
   /**
-   * Remove connection listener
-   * @param {function} callback - Listener to remove
+   * Notify connection state change
    */
-  removeConnectionListener(callback) {
-    const index = this.connectionListeners.indexOf(callback);
-    if (index > -1) {
-      this.connectionListeners.splice(index, 1);
-    }
-  }
-
-  /**
-   * Notify listeners about connection state
-   * @param {string} topicUrl - Topic URL
-   * @param {boolean} connected - Connection state
-   */
-  _notifyConnectionChange(topicUrl, connected) {
-    for (const callback of this.connectionListeners) {
+  _connectionChanged(topicUrl, connected) {
+    if (this._connectionChange) {
       try {
-        callback(topicUrl, connected);
+        this._connectionChange(topicUrl, connected);
       } catch (e) {
         debugLog('Connection listener error:', e);
       }
@@ -125,21 +112,15 @@ export class SubscriptionManager {
       (msg) => this._handleMessage(fullTopicUrl, msg, limit),
       (error) => {
         debugLog(`[SubscriptionManager] Subscription error for ${fullTopicUrl}:`, error);
-        this._notifyConnectionChange(fullTopicUrl, false);
+        this._connectionChanged(fullTopicUrl, false);
       },
-      () => this._notifyConnectionChange(fullTopicUrl, true),
+      () => this._connectionChanged(fullTopicUrl, true),
       since
     );
     
-    this.subscriptions[fullTopicUrl] = {
-      api,
-      subscription,
-      topic,
-      serverUrl,
-      lastMessageId: since
-    };
-    
-    this._notifyConnectionChange(fullTopicUrl, true);
+    this.subscriptions[fullTopicUrl] = subscription;
+
+    this._connectionChanged(fullTopicUrl, true);
     return true;
   }
 
@@ -156,7 +137,7 @@ export class SubscriptionManager {
     
     debugLog(`[SubscriptionManager] Unsubscribing from ${topicUrl}`);
     
-    sub.subscription.cancel();
+    sub.cancel();
     delete this.subscriptions[topicUrl];
     return true;
   }
@@ -205,18 +186,11 @@ export class SubscriptionManager {
       new: true
     }, limit);
 
-    // Update last message ID regardless
-    const sub = this.subscriptions[topicUrl];
-    if (sub) {
-      sub.lastMessageId = msg.id;
-    }
+    // Advance the resume watermark regardless
     await notificationStore.setLastMessageId(topicUrl, msg.id);
 
     if (!added) return;
-    
-    // Push to open history dialog
-    this._pushToHistory({ ...msg, new: 1 });
-    
+
     // Show notification
     this._showNotification(topicUrl, msg);
   }
@@ -299,24 +273,13 @@ if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('ima
    * @param {string} topic - Topic name
    * @param {string} serverUrl - Server URL
    */
-  _pushToHistory(msg) {
-    if (!this._historyPid) return;
-    const alive = GLib.file_test(`/proc/${this._historyPid}`, GLib.FileTest.EXISTS);
-    if (!alive) { this._historyPid = null; return; }
-    try {
-      const t = msg.topic || this._historyTopic;
-      const tmpPath = `/tmp/ntfy-live-${t}.jsonl`;
-      const line = JSON.stringify(msg) + '\n';
-      const file = Gio.File.new_for_path(tmpPath);
-      const ostream = file.append_to(Gio.FileCreateFlags.NONE, null);
-      ostream.write_all(new TextEncoder().encode(line), null);
-      ostream.close(null);
-    } catch (e) {
-      debugLog('[ntfy] _pushToHistory failed:', e);
-    }
-  }
-
   _openHistoryDialog(topic, serverUrl) {
+    // Already showing this topic: leave it alone (don't clobber read/scroll
+    // state). Only respawn when a different topic is being requested.
+    if (this._historyTopic === topic && this._historyProc &&
+        GLib.file_test(`/proc/${this._historyPid}`, GLib.FileTest.EXISTS)) {
+      return;
+    }
     // Kill previous dialog if still running
     if (this._historyProc) {
       try { this._historyProc.force_exit(); } catch (e) { /* already dead */ }
@@ -361,11 +324,6 @@ if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('ima
       this._historyProc = proc;
       this._historyPid = proc.get_identifier();
       this._historyTopic = topic;
-      // Clear any existing temp file for this topic
-      const tmpPath = `/tmp/ntfy-live-${topic}.jsonl`;
-      if (GLib.file_test(tmpPath, GLib.FileTest.EXISTS)) {
-        GLib.unlink(tmpPath);
-      }
     } catch (e) {
       debugLog('[ntfy] Failed to launch history dialog:', e);
     }

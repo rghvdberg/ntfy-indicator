@@ -126,16 +126,12 @@ export class NtfyApi {
     const msg = this._makeMessage('POST', `/${topic}`, headers);
     msg.set_request_body_from_bytes('text/plain', new TextEncoder().encode(message));
 
-    this._request(msg, onSuccess, onError, 'publish');
-  }
-
-  _request(msg, onSuccess, onError, label) {
     this.session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (session, result) => {
       try {
         session.send_and_read_finish(result);
         if (onSuccess) onSuccess();
       } catch (e) {
-        debugLog(`[NtfyApi] ${label} failed:`, e);
+        debugLog('[NtfyApi] publish failed:', e);
         if (onError) onError(e);
       }
     });

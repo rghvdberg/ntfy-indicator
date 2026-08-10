@@ -56,15 +56,14 @@ class AttachmentDownloader {
   }
   
   getCachedAttachment(notificationId, attachmentName) {
-    const safeName = `${notificationId}_${attachmentName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const cachePath = GLib.build_filenamev([this.cacheDir, safeName]);
+    const cachePath = this._cachePath(notificationId, attachmentName);
     if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) {
       return cachePath;
     }
     return null;
   }
-  
-  getCacheFilePath(notificationId, attachmentName) {
+
+  _cachePath(notificationId, attachmentName) {
     const safeName = `${notificationId}_${attachmentName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     return GLib.build_filenamev([this.cacheDir, safeName]);
   }
@@ -129,7 +128,7 @@ downloadAttachmentFile(url, cachePath, cb) {
       return;
     }
 
-    const cachePath = this.getCacheFilePath(notificationId, attachment.name || 'attachment');
+    const cachePath = this._cachePath(notificationId, attachment.name || 'attachment');
     this.downloadAttachmentFile(attachment.url, cachePath, cb);
   }
 }
@@ -440,6 +439,7 @@ app.connect('activate', () => {
     // === Message row builder ===
     function _appendRow(m, atTop = false) {
         const row = new Gtk.ListBoxRow({ selectable: false });
+        _rowById.set(m.id, row);
         const box = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL,
             spacing: 2,
@@ -493,7 +493,17 @@ app.connect('activate', () => {
             _sendCommand('delete', { id: m.id });
             if (m.new !== false && m.new !== 0)
                 _setTopicCount(currentTopic, Math.max(0, (topicCounts[currentTopic] || 0) - 1));
+            const adj = scrolled.get_vadjustment();
+            const prevScroll = adj.get_value();
+            _rowById.delete(m.id);
             msgListBox.remove(row);
+            // Removing a list row makes GTK re-create the scroll state and jump
+            // to top; restore the position (deferred so it survives the relayout).
+            adj.set_value(prevScroll);
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                adj.set_value(prevScroll);
+                return GLib.SOURCE_REMOVE;
+            });
         });
         headerBox.append(delBtn);
 
@@ -645,18 +655,9 @@ app.connect('activate', () => {
                     }
                 });
                 box.append(attBtn);
-            } else if (attUrl && isImage) {
-                // Image attachment: already handled by _createImagePicture above
-            } else if (attUrl) {
-                // Image without cached preview: show button
-                const attBtn = new Gtk.Button({
-                    label: `\uD83D\uDCCE ${attText}`,
-                    css_classes: ['flat'],
-                    halign: Gtk.Align.START,
-                });
-                attBtn.connect('clicked', () => GLib.spawn_command_line_async(`xdg-open '${attUrl}'`));
-                box.append(attBtn);
-            } else {
+                // Images with a url are rendered by the preview above; no extra
+                // button or label.
+            } else if (!attUrl) {
                 box.append(new Gtk.Label({
                     label: `\uD83D\uDCCE ${attText}`,
                     halign: Gtk.Align.START,
@@ -695,9 +696,13 @@ app.connect('activate', () => {
                 css_classes: ['ntfy-image-preview'],
             });
             picture.set_pixbuf(pixbuf);
-            // Nominal request; width min stays 0 so the window keeps its
-            // freedom to resize (no min-width lock).
-            picture.set_size_request(0, 0);
+            // Pin an initial height so freshly rebuilt rows never render
+            // 0-height/anatural-height images for a frame (which collapses the
+            // scrolled window and clamps the scroll to top); syncHeight
+            // re-derives the exact height from the real allocation on map.
+            let estW = msgListBox.get_width() - 24;
+            if (estW <= 0) estW = mainVbox.get_width() > 0 ? mainVbox.get_width() : 300;
+            picture.set_size_request(0, Math.max(1, Math.min(MAX_H, Math.round(estW * (ih / iw)))));
 
             // No GTK4 size-allocate signal, so sync the height to the
             // allocated width while mapped (objectFit: cover + maxHeight).
@@ -716,8 +721,6 @@ app.connect('activate', () => {
             };
             picture.connect('map', () => {
                 syncHeight();
-                GLib.idle_add(GLib.PRIORITY_LOW, syncHeight);
-                if (syncTimer) GLib.source_remove(syncTimer);
                 syncTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
                     if (!picture.get_mapped())
                         return GLib.SOURCE_REMOVE;
@@ -761,7 +764,6 @@ app.connect('activate', () => {
 
     // === IPC: command file (single file, topicUrl in each line) ===
     const _cmdPath = '/tmp/ntfy-cmd.jsonl';
-    function _tmpPath(t) { return `/tmp/ntfy-live-${t}.jsonl`; }
 
     function _sendCommand(cmd, data) {
         try {
@@ -791,30 +793,52 @@ app.connect('activate', () => {
     }
 
     // === Load messages from local store ===
+    let _lastTopId = null; // newest id from last load; scroll to top when it changes
+    const _rowById = new Map(); // id -> ListBoxRow of the current list
     function _loadMessages(t) {
-        // Clear existing rows
-        let child = msgListBox.get_first_child();
-        while (child) {
-            const next = child.get_next_sibling();
-            msgListBox.remove(child);
-            child = next;
-        }
-
         const storePath = _storePath(t);
+        const isCurrentTopic = t === currentTopic;
+        const adj = scrolled.get_vadjustment();
+        const prevValue = adj.get_value();
 
         _readFileContents(storePath, (contents) => {
             try {
-                if (contents) {
-                    const data = JSON.parse(new TextDecoder().decode(contents));
-                    const notifications = data.notifications || [];
-                    debugLog(`[history] Loaded ${notifications.length} messages from ${t}`);
-                    for (const m of notifications) {
-                        _appendRow(m);
-                    }
-                    debugLog(`[history] Added ${notifications.length} rows to listbox`);
-                } else {
-                    debugLog(`[history] No contents in ${storePath}`);
+                if (!contents) { debugLog(`[history] No store file for ${t}`); return; }
+                const data = JSON.parse(new TextDecoder().decode(contents));
+                const notifications = data.notifications || [];
+                const topId = notifications.length ? notifications[0].id : null;
+                const freshIds = notifications.map(n => n.id);
+                const curIds = [..._rowById.keys()];
+                // Structure unchanged (read-state churn, e.g. our own mark-read):
+                // skip the rebuild — a clear+repopulate resets the scroll (GTK
+                // re-creates the listbox scroll state even if content is identical).
+                if (curIds.length > 0 && curIds.length === freshIds.length &&
+                    curIds.every((id, i) => id === freshIds[i])) {
+                    _lastTopId = topId;
+                    return;
                 }
+                const newTop = isCurrentTopic && _lastTopId !== null && topId !== null &&
+                    topId !== _lastTopId;
+                _lastTopId = topId;
+                debugLog(`[history] Loaded ${notifications.length} messages from ${t}`);
+                // Clear + repopulate in one main-loop turn so the empty state never
+                // gets a layout pass (which would clamp the scroll to top).
+                _rowById.clear();
+                let child = msgListBox.get_first_child();
+                while (child) {
+                    const next = child.get_next_sibling();
+                    msgListBox.remove(child);
+                    child = next;
+                }
+                for (const m of notifications) {
+                    _appendRow(m);
+                }
+                if (newTop) {
+                    adj.set_value(0);
+                } else if (prevValue > 0) {
+                    adj.set_value(prevValue);
+                }
+                debugLog(`[history] Added ${notifications.length} rows to listbox`);
             } catch (e) {
                 if (debug) console.error(`[history] Failed to load store for ${t}: ${e.message}`);
             }
@@ -827,50 +851,10 @@ app.connect('activate', () => {
         topicItems[t].countLabel.set_text(unread > 0 ? String(unread) : '');
     }
 
-    // === Temp file poller (per current topic) ===
-    let _lastReadPos = 0;
-    let _pollBusy = false;
-
-    function _pollTempFile() {
-        if (_pollBusy) return GLib.SOURCE_CONTINUE;
-        _pollBusy = true;
-        const path = _tmpPath(currentTopic);
-        _readFileContents(path, (contents) => {
-            _pollBusy = false;
-            try {
-                if (!contents) return;
-                const text = new TextDecoder().decode(contents);
-                const newText = text.slice(_lastReadPos);
-                if (newText.length === 0) return;
-                _lastReadPos = text.length;
-                for (const line of newText.split('\n')) {
-                    if (!line.trim()) continue;
-                    try {
-                        const m = JSON.parse(line.trim());
-                        _appendRow(m, true);
-                        debugLog(`[history] Live row appended for ${currentTopic}`);
-                        const adj = scrolled.get_vadjustment();
-                        adj.set_value(0);
-                    } catch (e) { /* skip */ }
-                }
-            } catch (e) { /* ignore */ }
-        });
-        return GLib.SOURCE_CONTINUE;
-    }
-
-    function _startFilePoller() {
-        debugLog('[history] file poller started');
-        GLib.timeout_add(GLib.PRIORITY_LOW, 500, _pollTempFile);
-    }
-
     // === Topic switching ===
     function _switchTopic(t) {
         if (t === currentTopic) return;
         currentTopic = t;
-        _lastReadPos = 0;
-        // Clear temp file for new topic
-        const path = _tmpPath(t);
-        if (GLib.file_test(path, GLib.FileTest.EXISTS)) GLib.unlink(path);
         // Update UI
         topicLabel.set_text(t);
         publishEntry.set_placeholder_text(`Publish to ${t}...`);
@@ -1032,49 +1016,36 @@ app.connect('activate', () => {
             publishBtn.set_label('Sending...');
 
                 const doSend = (fileBytes) => {
+                // File publish: PUT with filename+message query; text publish: POST
+                const isFile = fileBytes !== null;
+                if (!isFile && !text) return;
                 let url = topicUrlMap[currentTopic];
-
-                if (fileBytes !== null) {
+                if (isFile) {
                     const fileName = attachFilePath.split('/').pop();
                     const queryParts = ['filename=' + encodeURIComponent(fileName)];
                     if (text) queryParts.push('message=' + encodeURIComponent(text));
                     url += '?' + queryParts.join('&');
-
-                    const httpMsg = Soup.Message.new('PUT', url);
-                    if (apiKey) httpMsg.request_headers.append('Authorization', 'Bearer ' + apiKey);
-                    if (acceptSelfSigned === 'true') httpMsg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
-                    for (const [k, v] of Object.entries(headers)) httpMsg.request_headers.append(k, v);
-                    httpMsg.set_request_body_from_bytes(null, fileBytes);
-
-                    session.send_and_read_async(httpMsg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
-                        try {
-                            sess.send_and_read_finish(result);
-                            dlg.close();
-                        } catch (e) {
-                            if (debug) console.error(`[history] Publish failed: ${e.message}`);
-                            publishBtn.set_label('Publish');
-                            publishBtn.set_sensitive(true);
-                        }
-                    });
-                } else {
-                    if (!text) return;
-                    const httpMsg = Soup.Message.new('POST', url);
-                    if (apiKey) httpMsg.request_headers.append('Authorization', 'Bearer ' + apiKey);
-                    if (acceptSelfSigned === 'true') httpMsg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
-                    for (const [k, v] of Object.entries(headers)) httpMsg.request_headers.append(k, v);
-                    httpMsg.set_request_body_from_bytes('text/plain', new TextEncoder().encode(text));
-
-                    session.send_and_read_async(httpMsg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
-                        try {
-                            sess.send_and_read_finish(result);
-                            dlg.close();
-                        } catch (e) {
-                            if (debug) console.error(`[history] Publish failed: ${e.message}`);
-                            publishBtn.set_label('Publish');
-                            publishBtn.set_sensitive(true);
-                        }
-                    });
                 }
+
+                const httpMsg = Soup.Message.new(isFile ? 'PUT' : 'POST', url);
+                if (apiKey) httpMsg.request_headers.append('Authorization', 'Bearer ' + apiKey);
+                if (acceptSelfSigned === 'true') httpMsg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
+                for (const [k, v] of Object.entries(headers)) httpMsg.request_headers.append(k, v);
+                httpMsg.set_request_body_from_bytes(
+                    isFile ? null : 'text/plain',
+                    isFile ? fileBytes : new TextEncoder().encode(text)
+                );
+
+                session.send_and_read_async(httpMsg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+                    try {
+                        sess.send_and_read_finish(result);
+                        dlg.close();
+                    } catch (e) {
+                        if (debug) console.error(`[history] Publish failed: ${e.message}`);
+                        publishBtn.set_label('Publish');
+                        publishBtn.set_sensitive(true);
+                    }
+                });
             };
 
             if (attachFilePath) {
@@ -1127,7 +1098,6 @@ app.connect('activate', () => {
     sendBtn.set_sensitive(true);
     expandBtn.set_sensitive(true);
     _loadMessages(currentTopic);
-    _startFilePoller();
 
     // Select initial topic row
     for (const t of allTopics) {

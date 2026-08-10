@@ -43,26 +43,12 @@ export class AttachmentDownloader {
   }
 
   /**
-   * Check if an image is already cached
-   * @param {string} notificationId - Notification ID
-   * @param {string} attachmentName - Original attachment filename
-   * @returns {string|null} Cache file path if exists, null otherwise
-   */
-  getCachedImage(notificationId, attachmentName) {
-    const cachePath = this.getCacheFilePath(notificationId, attachmentName);
-    if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) {
-      return cachePath;
-    }
-    return null;
-  }
-
-  /**
    * Get cache file path for a notification/attachment
    * @param {string} notificationId - Notification ID
    * @param {string} attachmentName - Original attachment filename
    * @returns {string} Cache file path
    */
-  getCacheFilePath(notificationId, attachmentName) {
+  _cachePath(notificationId, attachmentName) {
     const safeName = `${notificationId}_${attachmentName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     return GLib.build_filenamev([this.cacheDir, safeName]);
   }
@@ -151,14 +137,13 @@ export class AttachmentDownloader {
     debugLog(`[dl] downloadAttachment: ${attachment.name}, type: ${attachment.type}`);
 
     // Check if already cached
-    const cached = this.getCachedImage(notificationId, attachment.name || 'attachment');
-    if (cached) {
-      debugLog(`[dl] Already cached: ${cached}`);
-      return cached;
+    const cachePath = this._cachePath(notificationId, attachment.name || 'attachment');
+    if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) {
+      debugLog(`[dl] Already cached: ${cachePath}`);
+      return cachePath;
     }
 
     // Download and cache
-    const cachePath = this.getCacheFilePath(notificationId, attachment.name || 'attachment');
     debugLog(`[dl] Downloading to: ${cachePath}`);
     return await this._downloadFile(attachment.url, cachePath);
   }

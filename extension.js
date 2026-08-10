@@ -21,6 +21,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { Indicator } from './indicator.js';
 import { initSubscriptionManager, subscriptionManager } from './subscription-manager.js';
 import { debugLog } from './utils.js';
+// Reachability marker for shexli (EGO-P-007): the dialog is spawned as a
+// subprocess via `gjs -m`, so the static loader never sees it imported.
 import './history-dialog.js';
 
 export default class NtfyExtension extends Extension {
