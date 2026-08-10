@@ -13,6 +13,7 @@ PLAN.md
 # Build / test artifacts
 build/
 test-images/
+dl/
 
 # Editor/OS
 *.swp

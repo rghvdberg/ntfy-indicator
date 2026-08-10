@@ -432,8 +432,32 @@ app.connect('activate', () => {
     window.set_content(mainVbox);
 
     // Open a cached attachment with the default app; fall back to the
-    // default app for the file URI (no shell interpolation).
-    function _openAttachment(path) {
+    // default app for the file URI (no shell interpolation). Non-image
+    // attachments are copied to ~/Downloads first so users can find them.
+    function _copyToDownloads(cachePath, displayName) {
+        let dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD);
+        if (!dir) dir = GLib.get_home_dir() + '/Downloads';
+        GLib.mkdir_with_parents(dir, 0o755);
+        const base = displayName || GLib.path_get_basename(cachePath);
+        let name = base;
+        for (let i = 1; GLib.file_test(GLib.build_filenamev([dir, name]), GLib.FileTest.EXISTS); i++) {
+            const dot = base.lastIndexOf('.');
+            name = dot > 0 ? `${base.slice(0, dot)} (${i})${base.slice(dot)}` : `${base} (${i})`;
+        }
+        const dest = GLib.build_filenamev([dir, name]);
+        try {
+            Gio.File.new_for_path(cachePath).copy(Gio.File.new_for_path(dest),
+                Gio.FileCopyFlags.OVERWRITE, null, null);
+            return dest;
+        } catch (e) {
+            if (debug) console.error(`[history] Copy to Downloads failed: ${e.message}`);
+            return null;
+        }
+    }
+
+    function _openAttachment(path, displayName = null) {
+        const inDownloads = _copyToDownloads(path, displayName);
+        if (inDownloads) path = inDownloads;
         debugLog(`[history] Opening attachment: ${path}`);
         try {
             const file = Gio.File.new_for_path(path);
@@ -628,12 +652,12 @@ app.connect('activate', () => {
                 attBtn.connect('clicked', () => {
                     const cached = downloader.getCachedAttachment(m.id, att.name || 'attachment');
                     if (cached) {
-                        _openAttachment(cached);
+                        _openAttachment(cached, att.name || 'attachment');
                     } else {
                         debugLog(`[history] Not cached, downloading from ${att.url}`);
                         downloader.downloadAttachment(att, m.id, (newCachePath) => {
                             if (newCachePath) {
-                                _openAttachment(newCachePath);
+                                _openAttachment(newCachePath, att.name || 'attachment');
                             } else {
                                 if (debug) console.warn('[history] Download failed, opening URL');
                                 try {
