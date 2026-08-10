@@ -114,26 +114,4 @@ export class NtfyApi {
       },
     };
   }
-
-  publish(topic, message, options = {}, onSuccess, onError) {
-    const headers = {};
-    if (options.title) headers['Title'] = options.title;
-    if (options.priority) headers['Priority'] = String(options.priority);
-    if (options.tags) headers['Tags'] = options.tags;
-    if (options.click) headers['Click'] = options.click;
-    if (options.attach) headers['Attach'] = options.attach;
-
-    const msg = this._makeMessage('POST', `/${topic}`, headers);
-    msg.set_request_body_from_bytes('text/plain', new TextEncoder().encode(message));
-
-    this.session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (session, result) => {
-      try {
-        session.send_and_read_finish(result);
-        if (onSuccess) onSuccess();
-      } catch (e) {
-        debugLog('[NtfyApi] publish failed:', e);
-        if (onError) onError(e);
-      }
-    });
-  }
 }

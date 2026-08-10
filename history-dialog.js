@@ -21,7 +21,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-import { isDebug, debugLog } from './utils.js';
+import { isDebug, debugLog, parseTopicUrl, getDataDir, getNotificationFile, getCacheDir } from './utils.js';
 
 // Guard name `debug` is what shexli recognizes for gated console.* calls
 const debug = isDebug();
@@ -50,7 +50,7 @@ class AttachmentDownloader {
     this.session = new Soup.Session();
     
     // Build cache dir
-    const dataDir = GLib.build_filenamev([GLib.get_user_data_dir(), 'ntfy', 'cache']);
+    const dataDir = getCacheDir();
     GLib.mkdir_with_parents(dataDir, 0o755);
     this.cacheDir = dataDir;
   }
@@ -147,20 +147,15 @@ const isMutedInitially = mutedArg === 'true';
 const globalBaseUrl = serverUrl.replace(/\/$/, '');
 
 // Parse channel entries: entries may be bare topic names or full URLs
-function _parseEntry(entry) {
-    if (entry.includes('://')) {
-        const lastSlash = entry.lastIndexOf('/');
-        return { topic: entry.substring(lastSlash + 1), topicUrl: entry };
-    }
-    return { topic: entry, topicUrl: `${globalBaseUrl}/${entry}` };
-}
-const _parsed = topicsArg ? topicsArg.split(',').filter(t => t).map(_parseEntry) : [{ topic: initialTopic, topicUrl: `${globalBaseUrl}/${initialTopic}` }];
+const _parsed = topicsArg ? topicsArg.split(',').filter(t => t).map(entry => {
+    const { baseUrl, topic } = parseTopicUrl(entry);
+    return baseUrl ? { topic, topicUrl: entry } : { topic, topicUrl: `${globalBaseUrl}/${entry}` };
+}) : [{ topic: initialTopic, topicUrl: `${globalBaseUrl}/${initialTopic}` }];
 const allTopics = _parsed.map(p => p.topic);
 const topicUrlMap = {};
 for (const p of _parsed) topicUrlMap[p.topic] = p.topicUrl;
 const extDir = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'share', 'gnome-shell', 'extensions', 'ntfy-indicator@rghvdberg']);
-const _dataDir = GLib.build_filenamev([GLib.get_user_data_dir(), 'ntfy']);
-function _storePath(t) { return GLib.build_filenamev([_dataDir, topicUrlMap[t].replace(/[^a-zA-Z0-9]/g, '_') + '.json']); }
+function _storePath(t) { return getNotificationFile(topicUrlMap[t]); }
 
 const PRIORITY_LABELS = {
     1: { text: '\u25B2\u25B2', color: '#999' },
@@ -436,6 +431,22 @@ app.connect('activate', () => {
     mainVbox.append(hbox);
     window.set_content(mainVbox);
 
+    // Open a cached attachment with the default app; fall back to xdg-open.
+    function _openAttachment(path) {
+        debugLog(`[history] Opening attachment: ${path}`);
+        try {
+            const file = Gio.File.new_for_path(path);
+            const appInfo = Gio.AppInfo.get_default_for_type('application/octet-stream', false);
+            if (appInfo) {
+                try {
+                    appInfo.launch([file], null);
+                    return;
+                } catch (e) { /* fall through to xdg-open */ }
+            }
+        } catch (e) { /* fall through to xdg-open */ }
+        GLib.spawn_command_line_async(`xdg-open '${path}'`);
+    }
+
     // === Message row builder ===
     function _appendRow(m, atTop = false) {
         const row = new Gtk.ListBoxRow({ selectable: false });
@@ -610,43 +621,14 @@ app.connect('activate', () => {
                     halign: Gtk.Align.START,
                 });
                 attBtn.connect('clicked', () => {
-                    debugLog(`[history] Button clicked: ${att.name}`);
                     const cached = downloader.getCachedAttachment(m.id, att.name || 'attachment');
-                    debugLog(`[history] Cached: ${cached}`);
                     if (cached) {
-                        debugLog(`[history] Using cached file: ${cached}`);
-                        const file = Gio.File.new_for_path(cached);
-                        const appInfo = Gio.AppInfo.get_default_for_type(att.type || 'application/octet-stream', false);
-                        debugLog(`[history] AppInfo: ${appInfo ? appInfo.get_id() : 'null'}`);
-                        if (appInfo) {
-                            try {
-                                appInfo.launch([file], null);
-                                debugLog(`[history] Launched with ${appInfo.get_id()}`);
-                            } catch (e) {
-                                if (debug) console.error(`[history] Launch error: ${e.message}`);
-                                GLib.spawn_command_line_async(`xdg-open '${cached}'`);
-                            }
-                        } else {
-                            GLib.spawn_command_line_async(`xdg-open '${cached}'`);
-                        }
+                        _openAttachment(cached);
                     } else {
                         debugLog(`[history] Not cached, downloading from ${att.url}`);
                         downloader.downloadAttachment(att, m.id, (newCachePath) => {
-                            debugLog(`[history] Download result: ${newCachePath}`);
                             if (newCachePath) {
-                                const file = Gio.File.new_for_path(newCachePath);
-                                const appInfo = Gio.AppInfo.get_default_for_type(att.type || 'application/octet-stream', false);
-                                debugLog(`[history] Opening with: ${appInfo ? appInfo.get_id() : 'null'}`);
-                                if (appInfo) {
-                                    try {
-                                        appInfo.launch([file], null);
-                                    } catch (e) {
-                                        if (debug) console.error(`[history] Launch error: ${e.message}`);
-                                        GLib.spawn_command_line_async(`xdg-open '${newCachePath}'`);
-                                    }
-                                } else {
-                                    GLib.spawn_command_line_async(`xdg-open '${newCachePath}'`);
-                                }
+                                _openAttachment(newCachePath);
                             } else {
                                 if (debug) console.warn('[history] Download failed, opening URL');
                                 GLib.spawn_command_line_async(`xdg-open '${attUrl}'`);
@@ -876,6 +858,26 @@ app.connect('activate', () => {
         }
     });
 
+    // Shared publish sender: builds the Soup message (auth + cert + headers)
+    // and runs it, calling onSuccess/onError.
+    function _sendPublish(url, method, contentType, bytes, headers, onSuccess, onError) {
+        const msg = Soup.Message.new(method, url);
+        if (apiKey) msg.request_headers.append('Authorization', 'Bearer ' + apiKey);
+        if (acceptSelfSigned === 'true') msg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
+        for (const [k, v] of Object.entries(headers)) msg.request_headers.append(k, v);
+        msg.set_request_body_from_bytes(contentType, bytes);
+
+        session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+            try {
+                sess.send_and_read_finish(result);
+                onSuccess();
+            } catch (e) {
+                if (debug) console.error(`[history] Publish failed: ${e.message}`);
+                if (onError) onError();
+            }
+        });
+    }
+
     // === Quick Publish (single-line entry) ===
     function _doPublish() {
         const text = publishEntry.get_text().trim();
@@ -884,22 +886,12 @@ app.connect('activate', () => {
         sendBtn.set_sensitive(false);
         sendBtn.set_label('Sending...');
 
-        const url = topicUrlMap[currentTopic];
-        const msg = Soup.Message.new('POST', url);
-        if (apiKey) msg.request_headers.append('Authorization', 'Bearer ' + apiKey);
-        if (acceptSelfSigned === 'true') msg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
-        msg.set_request_body_from_bytes('text/plain', new TextEncoder().encode(text));
-
-        session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
-            try {
-                sess.send_and_read_finish(result);
-                publishEntry.set_text('');
-            } catch (e) {
-                if (debug) console.error(`[history] Publish failed: ${e.message}`);
-            }
-            sendBtn.set_label('Send');
-            sendBtn.set_sensitive(true);
-        });
+        _sendPublish(
+            topicUrlMap[currentTopic], 'POST', 'text/plain',
+            new TextEncoder().encode(text), {},
+            () => { publishEntry.set_text(''); sendBtn.set_label('Send'); sendBtn.set_sensitive(true); },
+            () => { sendBtn.set_label('Send'); sendBtn.set_sensitive(true); }
+        );
     }
 
     // === Full Publish Dialog (multiline + advanced fields) ===
@@ -1027,25 +1019,14 @@ app.connect('activate', () => {
                     url += '?' + queryParts.join('&');
                 }
 
-                const httpMsg = Soup.Message.new(isFile ? 'PUT' : 'POST', url);
-                if (apiKey) httpMsg.request_headers.append('Authorization', 'Bearer ' + apiKey);
-                if (acceptSelfSigned === 'true') httpMsg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
-                for (const [k, v] of Object.entries(headers)) httpMsg.request_headers.append(k, v);
-                httpMsg.set_request_body_from_bytes(
+                _sendPublish(
+                    url, isFile ? 'PUT' : 'POST',
                     isFile ? null : 'text/plain',
-                    isFile ? fileBytes : new TextEncoder().encode(text)
+                    isFile ? fileBytes : new TextEncoder().encode(text),
+                    headers,
+                    () => dlg.close(),
+                    () => { publishBtn.set_label('Publish'); publishBtn.set_sensitive(true); }
                 );
-
-                session.send_and_read_async(httpMsg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
-                    try {
-                        sess.send_and_read_finish(result);
-                        dlg.close();
-                    } catch (e) {
-                        if (debug) console.error(`[history] Publish failed: ${e.message}`);
-                        publishBtn.set_label('Publish');
-                        publishBtn.set_sensitive(true);
-                    }
-                });
             };
 
             if (attachFilePath) {

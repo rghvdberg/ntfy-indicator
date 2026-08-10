@@ -31,6 +31,10 @@ export function getDataDir() {
   return GLib.build_filenamev([dataDir, 'ntfy']);
 }
 
+export function getCacheDir() {
+  return GLib.build_filenamev([getDataDir(), 'cache']);
+}
+
 export function getNotificationFile(topicUrl) {
   const dataDir = getDataDir();
   const safeName = topicUrl.replace(/[^a-zA-Z0-9]/g, '_');

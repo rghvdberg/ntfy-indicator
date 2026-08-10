@@ -21,7 +21,7 @@ import Soup from 'gi://Soup';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-import { debugLog } from './utils.js';
+import { debugLog, getCacheDir } from './utils.js';
 
 
 // Maximum image size to download (5MB)
@@ -32,7 +32,7 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 export class AttachmentDownloader {
   constructor(acceptSelfSigned = false, apiKey = null) {
-    this.cacheDir = GLib.build_filenamev([GLib.get_user_data_dir(), 'ntfy', 'cache']);
+    this.cacheDir = getCacheDir();
     this._ensureCacheDir();
     this.acceptSelfSigned = acceptSelfSigned;
     this.apiKey = apiKey;
@@ -123,8 +123,6 @@ export class AttachmentDownloader {
    * Download and cache any attachment, returning the cache path
    * @param {object} attachment - Attachment object from ntfy
    * @param {string} notificationId - Notification ID
-   * @param {boolean} acceptSelfSigned - Accept self-signed certificates
-   * @param {string} apiKey - Optional API key
    * @returns {Promise<string|null>} Resolves with cache path on success, null on failure
    */
   async downloadAttachment(attachment, notificationId) {

@@ -18,7 +18,7 @@
 
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import { getNotificationFile, getDataDir, debugLog } from './utils.js';
+import { getNotificationFile, getDataDir, getCacheDir, debugLog } from './utils.js';
 
 /**
  * NotificationStore class
@@ -27,7 +27,7 @@ import { getNotificationFile, getDataDir, debugLog } from './utils.js';
 export class NotificationStore {
   constructor() {
     this.dataDir = getDataDir();
-    this.cacheDir = GLib.build_filenamev([GLib.get_user_data_dir(), 'ntfy', 'cache']);
+    this.cacheDir = getCacheDir();
     this._ensureDataDir();
     this._onChange = null;
     this._locks = {};

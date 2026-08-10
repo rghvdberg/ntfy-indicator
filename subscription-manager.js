@@ -401,30 +401,8 @@ if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('ima
     }
   }
 
-  /**
-   * Publish a message to a topic
-   * @param {string} topicUrl - Topic URL
-   * @param {string} message - Message body
-   * @param {object} options - Message options
-   * @param {function} onSuccess - Success callback
-   * @param {function} onError - Error callback
-   */
-  publish(topicUrl, message, options = {}, onSuccess, onError) {
-    const { baseUrl, topic } = parseTopicUrl(topicUrl);
-    const serverUrl = baseUrl || this.settings.get_string('server');
-    const apiKey = getApiKey(this.settings, serverUrl);
-    
-    const api = new NtfyApi(serverUrl, apiKey, this.settings.get_boolean('accept-self-signed'));
-    
-    api.publish(topic, message, options, onSuccess, onError);
-  }
-
   async getUnreadCount(topicUrl) {
     return notificationStore.getUnreadCount(topicUrl);
-  }
-
-  getSubscribedTopics() {
-    return Object.keys(this.subscriptions);
   }
 
   /**
