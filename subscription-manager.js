@@ -23,7 +23,7 @@ import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import { NtfyApi } from './api.js';
 import { notificationStore } from './notification-store.js';
 import { attachmentDownloader } from './attachment-downloader.js';
-import { getApiKey, parseTopicUrl } from './utils.js';
+import { getApiKey, parseTopicUrl, debugLog } from './utils.js';
 
 // Polyfill URL for GNOME 50 MessageTray which references it internally
 if (typeof URL === 'undefined') {
@@ -90,7 +90,7 @@ export class SubscriptionManager {
       try {
         callback(topicUrl, connected);
       } catch (e) {
-        logError(e, 'Connection listener error');
+        debugLog('Connection listener error:', e);
       }
     }
   }
@@ -98,9 +98,9 @@ export class SubscriptionManager {
   /**
    * Subscribe to a topic
    * @param {string} topicUrl - Full topic URL or topic name
-   * @returns {boolean} True if subscribed successfully
+   * @returns {Promise<boolean>} True if subscribed successfully
    */
-  subscribe(topicUrl) {
+  async subscribe(topicUrl) {
     const { baseUrl, topic } = parseTopicUrl(topicUrl);
     const serverUrl = baseUrl || this.settings.get_string('server');
     const apiKey = getApiKey(this.settings, serverUrl);
@@ -108,24 +108,27 @@ export class SubscriptionManager {
     const fullTopicUrl = `${serverUrl}/${topic}`;
     
     if (this.subscriptions[fullTopicUrl]) {
-      log(`[SubscriptionManager] Already subscribed to ${fullTopicUrl}`);
+      debugLog(`[SubscriptionManager] Already subscribed to ${fullTopicUrl}`);
       return true;
     }
     
-    log(`[SubscriptionManager] Subscribing to ${fullTopicUrl}`);
+    debugLog(`[SubscriptionManager] Subscribing to ${fullTopicUrl}`);
     
     const api = new NtfyApi(serverUrl, apiKey, this.settings.get_boolean('accept-self-signed'));
     const limit = this.settings.get_int('history-limit');
     
-    // Use '1h' on fresh subscribe (not since lastId) so reconnections fetch recent messages
+    // Resume from the last delivered message id (null -> 'all' -> first-ever full load)
+    const since = await notificationStore.getLastMessageId(fullTopicUrl);
+    
     const subscription = api.subscribe(
       topic,
       (msg) => this._handleMessage(fullTopicUrl, msg, limit),
       (error) => {
-        logError(error, `[SubscriptionManager] Subscription error for ${fullTopicUrl}`);
+        debugLog(`[SubscriptionManager] Subscription error for ${fullTopicUrl}:`, error);
         this._notifyConnectionChange(fullTopicUrl, false);
       },
-      () => this._notifyConnectionChange(fullTopicUrl, true)
+      () => this._notifyConnectionChange(fullTopicUrl, true),
+      since
     );
     
     this.subscriptions[fullTopicUrl] = {
@@ -133,7 +136,7 @@ export class SubscriptionManager {
       subscription,
       topic,
       serverUrl,
-      lastMessageId: null
+      lastMessageId: since
     };
     
     this._notifyConnectionChange(fullTopicUrl, true);
@@ -151,7 +154,7 @@ export class SubscriptionManager {
       return false;
     }
     
-    log(`[SubscriptionManager] Unsubscribing from ${topicUrl}`);
+    debugLog(`[SubscriptionManager] Unsubscribing from ${topicUrl}`);
     
     sub.subscription.cancel();
     delete this.subscriptions[topicUrl];
@@ -172,6 +175,10 @@ export class SubscriptionManager {
    */
   destroy() {
     this.unsubscribeAll();
+    if (this._commandPollerId) {
+      GLib.source_remove(this._commandPollerId);
+      this._commandPollerId = null;
+    }
     if (this._source) {
       Main.messageTray.remove(this._source);
       this._source = null;
@@ -184,7 +191,7 @@ export class SubscriptionManager {
    * @param {object} msg - Raw message
    * @param {number} limit - History limit
    */
-  _handleMessage(topicUrl, msg, limit) {
+  async _handleMessage(topicUrl, msg, limit) {
     if (msg.event !== 'message') return;
     // Check if muted
     const mutedTopics = this._parseMutedTopics();
@@ -193,7 +200,7 @@ export class SubscriptionManager {
     }
     
     // Add to store (returns false if duplicate or seen)
-    const added = notificationStore.addNotification(topicUrl, {
+    const added = await notificationStore.addNotification(topicUrl, {
       ...msg,
       new: true
     }, limit);
@@ -203,6 +210,7 @@ export class SubscriptionManager {
     if (sub) {
       sub.lastMessageId = msg.id;
     }
+    await notificationStore.setLastMessageId(topicUrl, msg.id);
 
     if (!added) return;
     
@@ -243,8 +251,8 @@ export class SubscriptionManager {
      // Handle image attachments
      // Note: GNOME Shell notifications don't display large images, only small icons.
      // Images are shown in the history dialog where we have full GTK4 control.
-     if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('image/')) {
-       log(`[ntfy] Image attachment detected: ${msg.attachment.name} (shown in history dialog)`);
+if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('image/')) {
+        debugLog(`[ntfy] Image attachment detected: ${msg.attachment.name} (shown in history dialog)`);
        // Download for history dialog cache
        const apiKey = getApiKey(this.settings, topicUrl.replace(/\/[^\/]+$/, ''));
        const acceptSelfSigned = this.settings.get_boolean('accept-self-signed');
@@ -254,31 +262,31 @@ export class SubscriptionManager {
          msg.id,
          acceptSelfSigned,
          apiKey
-       ).then(cachePath => {
-         if (cachePath) {
-           log(`[ntfy] Image cached for history dialog: ${cachePath}`);
-         }
-       });
+).then(cachePath => {
+          if (cachePath) {
+            debugLog(`[ntfy] Image cached for history dialog: ${cachePath}`);
+          }
+        });
      }
     
     // Determine what happens when notification is clicked
     const { baseUrl, topic } = parseTopicUrl(topicUrl);
     const serverUrl = baseUrl || this.settings.get_string('server');
     
-    log(`[ntfy] Creating notification: title="${title}" topicUrl=${topicUrl} msg.id=${msg.id}`);
-    notification.connect('activated', () => {
-      log(`[ntfy] Notification activated: topicUrl=${topicUrl} msg.id=${msg.id}`);
-      const result = notificationStore.markRead(topicUrl, msg.id);
-      log(`[ntfy] markRead result: ${result}`);
+    debugLog(`[ntfy] Creating notification: title="${title}" topicUrl=${topicUrl} msg.id=${msg.id}`);
+    notification.connect('activated', async () => {
+      debugLog(`[ntfy] Notification activated: topicUrl=${topicUrl} msg.id=${msg.id}`);
+      const result = await notificationStore.markRead(topicUrl, msg.id);
+      debugLog(`[ntfy] markRead result: ${result}`);
       // Priority: click URL > attachment URL > history dialog
       if (msg.click) {
-        log(`[ntfy] Opening click URL: ${msg.click}`);
+        debugLog(`[ntfy] Opening click URL: ${msg.click}`);
         GLib.spawn_command_line_async(`xdg-open '${msg.click}'`);
       } else if (msg.attach) {
-        log(`[ntfy] Opening attachment: ${msg.attach}`);
+        debugLog(`[ntfy] Opening attachment: ${msg.attach}`);
         GLib.spawn_command_line_async(`xdg-open '${msg.attach}'`);
       } else {
-        log(`[ntfy] Opening history for topic: ${topic}`);
+        debugLog(`[ntfy] Opening history for topic: ${topic}`);
         this._openHistoryDialog(topic, serverUrl);
       }
     });
@@ -304,7 +312,7 @@ export class SubscriptionManager {
       ostream.write_all(new TextEncoder().encode(line), null);
       ostream.close(null);
     } catch (e) {
-      logError(e, '[ntfy] _pushToHistory failed');
+      debugLog('[ntfy] _pushToHistory failed:', e);
     }
   }
 
@@ -330,7 +338,26 @@ export class SubscriptionManager {
     
     try {
       const launcher = new Gio.SubprocessLauncher({});
-      const proc = launcher.spawnv(['/usr/bin/gjs', scriptPath, serverUrl, apiKey, String(accept), topic, this.settings.get_strv('channels').join(','), String(isMuted)]);
+      // The shell process has no display env vars, so hand the GTK4 dialog the
+      // session's Wayland socket explicitly (env first, else scan the runtime dir).
+      const waylandDisplay = GLib.getenv('WAYLAND_DISPLAY');
+      if (!waylandDisplay) {
+        const rtDir = Gio.File.new_for_path(GLib.get_user_runtime_dir());
+        try {
+          const kids = rtDir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
+          let info;
+          while ((info = kids.next_file(null)) !== null) {
+            if (info.get_name().startsWith('wayland-')) {
+              launcher.setenv('WAYLAND_DISPLAY', info.get_name(), true);
+              break;
+            }
+          }
+          kids.close(null);
+        } catch (e) { /* no runtime dir */ }
+      } else {
+        launcher.setenv('WAYLAND_DISPLAY', waylandDisplay, true);
+      }
+      const proc = launcher.spawnv(['/usr/bin/gjs', '-m', scriptPath, serverUrl, apiKey, String(accept), topic, this.settings.get_strv('channels').join(','), String(isMuted)]);
       this._historyProc = proc;
       this._historyPid = proc.get_identifier();
       this._historyTopic = topic;
@@ -340,7 +367,7 @@ export class SubscriptionManager {
         GLib.unlink(tmpPath);
       }
     } catch (e) {
-      logError(e, '[ntfy] Failed to launch history dialog');
+      debugLog('[ntfy] Failed to launch history dialog:', e);
     }
 
     // Start polling command file from dialog
@@ -355,42 +382,51 @@ export class SubscriptionManager {
       GLib.file_set_contents(cmdPath, '');
     }
 
-    GLib.timeout_add(GLib.PRIORITY_LOW, 150, () => {
+    if (this._commandPollerId) {
+      GLib.source_remove(this._commandPollerId);
+      this._commandPollerId = null;
+    }
+
+    this._commandPollerId = GLib.timeout_add(GLib.PRIORITY_LOW, 150, () => {
       // Check if dialog is still alive
       if (!this._historyPid || !GLib.file_test(`/proc/${this._historyPid}`, GLib.FileTest.EXISTS)) {
+        this._commandPollerId = null;
         return GLib.SOURCE_REMOVE;
       }
-      try {
-        if (!GLib.file_test(cmdPath, GLib.FileTest.EXISTS)) return true;
-        const [ok, contents] = GLib.file_get_contents(cmdPath);
-        if (!ok || !contents) return true;
-        const text = new TextDecoder().decode(contents).trim();
-        if (!text) return true;
-        // Clear file immediately
-        GLib.file_set_contents(cmdPath, '');
-        for (const line of text.split('\n')) {
-          if (!line.trim()) continue;
-          try {
-            const cmd = JSON.parse(line);
-            const topicUrl = cmd.topicUrl;
-            if (cmd.cmd === 'markRead') {
-              notificationStore.markRead(topicUrl, cmd.id);
-            } else if (cmd.cmd === 'delete') {
-              notificationStore.deleteNotification(topicUrl, cmd.id);
-            } else if (cmd.cmd === 'mute') {
-              this.mute(topicUrl, 3600);
-            } else if (cmd.cmd === 'unmute') {
-              this.unmute(topicUrl);
-            } else if (cmd.cmd === 'markAllRead') {
-              notificationStore.markAllRead(topicUrl);
-            } else if (cmd.cmd === 'deleteAll') {
-              const all = notificationStore.load(topicUrl);
-              for (const n of all) notificationStore.deleteNotification(topicUrl, n.id);
-            }
-          } catch (e) { /* skip */ }
-        }
-      } catch (e) { /* ignore */ }
-      return true;
+      if (!GLib.file_test(cmdPath, GLib.FileTest.EXISTS)) return GLib.SOURCE_CONTINUE;
+      const file = Gio.File.new_for_path(cmdPath);
+      file.load_contents_async(null, async (source, result) => {
+        try {
+          const [, contents] = source.load_contents_finish(result);
+          if (!contents) return;
+          const text = new TextDecoder().decode(contents).trim();
+          if (!text) return;
+          // Clear file immediately
+          GLib.file_set_contents(cmdPath, '');
+          for (const line of text.split('\n')) {
+            if (!line.trim()) continue;
+            try {
+              const cmd = JSON.parse(line);
+              const topicUrl = cmd.topicUrl;
+              if (cmd.cmd === 'markRead') {
+                await notificationStore.markRead(topicUrl, cmd.id);
+              } else if (cmd.cmd === 'delete') {
+                await notificationStore.deleteNotification(topicUrl, cmd.id);
+              } else if (cmd.cmd === 'mute') {
+                this.mute(topicUrl, 3600);
+              } else if (cmd.cmd === 'unmute') {
+                this.unmute(topicUrl);
+              } else if (cmd.cmd === 'markAllRead') {
+                await notificationStore.markAllRead(topicUrl);
+              } else if (cmd.cmd === 'deleteAll') {
+                const all = await notificationStore.load(topicUrl);
+                for (const n of all) await notificationStore.deleteNotification(topicUrl, n.id);
+              }
+            } catch (e) { /* skip */ }
+          }
+        } catch (e) { /* ignore */ }
+      });
+      return GLib.SOURCE_CONTINUE;
     });
   }
 
@@ -425,7 +461,7 @@ export class SubscriptionManager {
     api.publish(topic, message, options, onSuccess, onError);
   }
 
-  getUnreadCount(topicUrl) {
+  async getUnreadCount(topicUrl) {
     return notificationStore.getUnreadCount(topicUrl);
   }
 
