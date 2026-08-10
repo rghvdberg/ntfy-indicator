@@ -41,6 +41,18 @@ if (typeof URL === 'undefined') {
 }
 
 /**
+ * Open a URL in the default browser without shell interpolation
+ * (user/publisher-controlled input must never reach a shell string).
+ */
+function _openUrl(url) {
+  try {
+    Gio.AppInfo.launch_default_for_uri(url, null);
+  } catch (e) {
+    debugLog(`[ntfy] Failed to open URL ${url}:`, e);
+  }
+}
+
+/**
  * SubscriptionManager class
  * Handles subscribing/unsubscribing to topics and delivering notifications
  */
@@ -255,10 +267,10 @@ if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('ima
       // Priority: click URL > attachment URL > history dialog
       if (msg.click) {
         debugLog(`[ntfy] Opening click URL: ${msg.click}`);
-        GLib.spawn_command_line_async(`xdg-open '${msg.click}'`);
+        _openUrl(msg.click);
       } else if (msg.attach) {
         debugLog(`[ntfy] Opening attachment: ${msg.attach}`);
-        GLib.spawn_command_line_async(`xdg-open '${msg.attach}'`);
+        _openUrl(msg.attach);
       } else {
         debugLog(`[ntfy] Opening history for topic: ${topic}`);
         this._openHistoryDialog(topic, serverUrl);

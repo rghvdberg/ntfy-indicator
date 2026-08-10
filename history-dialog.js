@@ -431,7 +431,8 @@ app.connect('activate', () => {
     mainVbox.append(hbox);
     window.set_content(mainVbox);
 
-    // Open a cached attachment with the default app; fall back to xdg-open.
+    // Open a cached attachment with the default app; fall back to the
+    // default app for the file URI (no shell interpolation).
     function _openAttachment(path) {
         debugLog(`[history] Opening attachment: ${path}`);
         try {
@@ -441,10 +442,14 @@ app.connect('activate', () => {
                 try {
                     appInfo.launch([file], null);
                     return;
-                } catch (e) { /* fall through to xdg-open */ }
+                } catch (e) { /* fall through to default app */ }
             }
-        } catch (e) { /* fall through to xdg-open */ }
-        GLib.spawn_command_line_async(`xdg-open '${path}'`);
+        } catch (e) { /* fall through to default app */ }
+        try {
+            Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(path).get_uri(), null);
+        } catch (e) {
+            if (debug) console.error(`[history] Failed to open attachment: ${e.message}`);
+        }
     }
 
     // === Message row builder ===
@@ -631,7 +636,9 @@ app.connect('activate', () => {
                                 _openAttachment(newCachePath);
                             } else {
                                 if (debug) console.warn('[history] Download failed, opening URL');
-                                GLib.spawn_command_line_async(`xdg-open '${attUrl}'`);
+                                try {
+                                    Gio.AppInfo.launch_default_for_uri(attUrl, null);
+                                } catch (e) { if (debug) console.error(`[history] Open failed: ${e.message}`); }
                             }
                         });
                     }
@@ -728,7 +735,9 @@ app.connect('activate', () => {
                     if (srcFile.query_exists(null)) {
                         srcFile.copy(destFile, Gio.FileCopyFlags.OVERWRITE, null, null);
                         if (destFile.query_exists(null)) {
-                            GLib.spawn_command_line_async(`xdg-open '${tempFile}'`);
+                            try {
+                                Gio.AppInfo.launch_default_for_uri(destFile.get_uri(), null);
+                            } catch (e) { if (debug) console.error(`[history] Open image failed: ${e.message}`); }
                         }
                     }
                 } catch (e) {
