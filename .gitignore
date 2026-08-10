@@ -15,3 +15,9 @@ PLAN.md
 .DS_Store
 .vscode/
 .idea/
+
+# Assistant tool state
+.serena/
+
+# Virtualenv
+venv/

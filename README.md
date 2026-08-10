@@ -72,6 +72,26 @@ Open the extension preferences to configure:
 - libadwaita
 - libsoup3
 
+## Development
+
+### Running shexli (extension linter)
+
+`shexli` (0.2.1 — the only release) segfaults if installed fresh, because `pip install shexli` pulls `tree-sitter==0.26.0`, which has a memory-corruption bug that crashes the analyzer on larger modules (SIGSEGV/Bus error, no findings). Pin the known-good version:
+
+```bash
+python3 -m venv venv
+. venv/bin/activate
+pip install shexli
+pip install "tree-sitter==0.25.2"   # workaround for shexli crash (see below)
+shexli <extension-folder-or-zip>
+```
+
+This is a known upstream issue — `tree-sitter` 0.25.1/0.25.2 analyze extensions cleanly and repeatably; 0.26.0 crashes (memory corruption, symptom location varies per run). Not a bug in this extension.
+
+### CI packaging (extensions.gnome.org)
+
+`gnome-extensions pack` (as wrapped by the CI action) only includes standard files automatically (`metadata.json`, `extension.js`, `prefs.js`, `stylesheet.css`, `schemas/`). Every other file must be listed in the workflow's `extra-source`. The first EGO submission's zip was missing all module JS and LICENSE because of this, and `extra-source` files are flattened to their basename — so never pass the schema XML via `extra-source` (it must stay under `schemas/`). The workflow verifies the packaged zip's contents after building; keep `extra-source` and the packed file list in sync when adding files.
+
 ## License
 
 GNU General Public License v3.0 or later — see [LICENSE](LICENSE) for details.

@@ -23,8 +23,47 @@ jobs:
           source-dir: .
           output-dir: ./build
           extra-source: |
-            schemas/org.gnome.shell.extensions.ntfy-indicator.gschema.xml
-            icons/ntfy.svg
+            api.js
+            attachment-downloader.js
+            history-dialog.js
+            indicator.js
+            notification-store.js
+            subscription-manager.js
+            utils.js
+            LICENSE
+            icons
+
+      - name: Verify zip contains all required files
+        shell: bash
+        run: |
+          python3 - "${{ steps.package.outputs.zip-file }}" <<'EOF'
+          import sys, zipfile
+          req = {
+              "metadata.json", "extension.js", "prefs.js", "stylesheet.css",
+              "api.js", "attachment-downloader.js", "history-dialog.js",
+              "indicator.js", "notification-store.js", "subscription-manager.js",
+              "utils.js", "LICENSE",
+              "schemas/org.gnome.shell.extensions.ntfy-indicator.gschema.xml",
+              "icons/ntfy.svg",
+          }
+          root_allowed = {
+              "metadata.json", "extension.js", "prefs.js", "stylesheet.css",
+              "api.js", "attachment-downloader.js", "history-dialog.js",
+              "indicator.js", "notification-store.js", "subscription-manager.js",
+              "utils.js", "LICENSE",
+          }
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names = set(z.namelist())
+          missing = sorted(req - names)
+          stray_root = sorted(n for n in names if "/" not in n and n not in root_allowed)
+          if missing:
+              print(f"::error::Missing files in zip: {missing}")
+              sys.exit(1)
+          if stray_root:
+              print(f"::error::Unexpected files at zip root: {stray_root}")
+              sys.exit(1)
+          print(f"zip verification OK: {len(names)} entries, all required files present")
+          EOF
 
       - name: Upload zip artifact
         uses: actions/upload-artifact@v4
@@ -53,5 +92,12 @@ jobs:
           password: ${{ secrets.GNOME_PASSWORD }}
           accept-tos: true
           extra-source: |
-            schemas/org.gnome.shell.extensions.ntfy-indicator.gschema.xml
-            icons/ntfy.svg
+            api.js
+            attachment-downloader.js
+            history-dialog.js
+            indicator.js
+            notification-store.js
+            subscription-manager.js
+            utils.js
+            LICENSE
+            icons
