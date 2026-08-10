@@ -21,6 +21,8 @@ import Soup from 'gi://Soup';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
+import { debugLog } from './utils.js';
+
 
 // Maximum image size to download (5MB)
 // Rationale: Most notification images (screenshots, camera snapshots, memes)
@@ -76,14 +78,14 @@ export class AttachmentDownloader {
   _downloadFile(url, cachePath) {
     return new Promise((resolve) => {
       try {
-        printerr(`[dl] Starting download: ${url} -> ${cachePath}`);
+        debugLog(`[dl] Starting download: ${url} -> ${cachePath}`);
         const session = new Soup.Session();
         const msg = Soup.Message.new('GET', url);
 
         // Handle self-signed certificates
         if (this.acceptSelfSigned) {
           msg.connect('accept-certificate', (_msg, _cert, errors) => {
-            printerr(`[dl] Accepting self-signed cert`);
+            debugLog('[dl] Accepting self-signed cert');
             return true;
           });
         }
@@ -98,11 +100,11 @@ export class AttachmentDownloader {
           const bytes = session.send_and_read(msg, null);
           const data = bytes.get_data();
           const size = data.length;
-          printerr(`[dl] Downloaded ${size} bytes`);
+          debugLog(`[dl] Downloaded ${size} bytes`);
       
           // Check size limit
           if (size > MAX_IMAGE_SIZE) {
-            printerr(`[dl] File too large: ${size}`);
+            debugLog(`[dl] File too large: ${size}`);
             resolve(null);
             return;
           }
@@ -118,14 +120,14 @@ export class AttachmentDownloader {
           ostream.write_all(data, null);
           ostream.close(null);
 
-          printerr(`[dl] Cached: ${cachePath}`);
+          debugLog(`[dl] Cached: ${cachePath}`);
           resolve(cachePath);
         } catch (e) {
-          printerr(`[dl] Download error: ${e.message}`);
+          debugLog(`[dl] Download error: ${e.message}`);
           resolve(null);
         }
       } catch (e) {
-        printerr(`[dl] Init error: ${e.message}`);
+        debugLog(`[dl] Init error: ${e.message}`);
         resolve(null);
       }
     });
@@ -140,24 +142,24 @@ export class AttachmentDownloader {
    * @returns {Promise<string|null>} Resolves with cache path on success, null on failure
    */
   async downloadAttachment(attachment, notificationId) {
-    printerr(`[dl] downloadAttachment called with: ${JSON.stringify(attachment)}`);
+    debugLog(`[dl] downloadAttachment called with: ${JSON.stringify(attachment)}`);
     if (!attachment || !attachment.url) {
-      printerr(`[dl] No attachment or URL: ${!!attachment}, ${!!attachment?.url}`);
+      debugLog(`[dl] No attachment or URL: ${!!attachment}, ${!!attachment?.url}`);
       return null;
     }
 
-    printerr(`[dl] downloadAttachment: ${attachment.name}, type: ${attachment.type}`);
+    debugLog(`[dl] downloadAttachment: ${attachment.name}, type: ${attachment.type}`);
 
     // Check if already cached
     const cached = this.getCachedImage(notificationId, attachment.name || 'attachment');
     if (cached) {
-      printerr(`[dl] Already cached: ${cached}`);
+      debugLog(`[dl] Already cached: ${cached}`);
       return cached;
     }
 
     // Download and cache
     const cachePath = this.getCacheFilePath(notificationId, attachment.name || 'attachment');
-    printerr(`[dl] Downloading to: ${cachePath}`);
+    debugLog(`[dl] Downloading to: ${cachePath}`);
     return await this._downloadFile(attachment.url, cachePath);
   }
 }

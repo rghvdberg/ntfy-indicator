@@ -18,12 +18,29 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-imports.gi.versions.Gtk = '4.0';
-imports.gi.versions.Adw = '1';
-imports.gi.versions.Soup = '3.0';
-imports.gi.versions.GdkPixbuf = '2.0';
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 
-const { Gtk, Adw, Gio, GLib, Soup, Pango, GdkPixbuf } = imports.gi;
+import { isDebug, debugLog } from './utils.js';
+
+// Guard name `debug` is what shexli recognizes for gated console.* calls
+const debug = isDebug();
+
+// Loaded lazily so importing this module from the shell stays GTK-free
+let Gtk = null;
+let Adw = null;
+let Soup = null;
+let Pango = null;
+let GdkPixbuf = null;
+
+async function _loadAppLibs() {
+    if (Gtk) return;
+    Gtk = (await import('gi://Gtk?version=4.0')).default;
+    Adw = (await import('gi://Adw?version=1')).default;
+    Soup = (await import('gi://Soup?version=3.0')).default;
+    Pango = (await import('gi://Pango')).default;
+    GdkPixbuf = (await import('gi://GdkPixbuf?version=2.0')).default;
+}
 
 // Attachment downloader for GTK4 (downloads all file types)
 class AttachmentDownloader {
@@ -51,76 +68,82 @@ class AttachmentDownloader {
     const safeName = `${notificationId}_${attachmentName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     return GLib.build_filenamev([this.cacheDir, safeName]);
   }
+
+  dispose() {
+    if (this.session) this.session.abort();
+  }
   
-  downloadAttachmentFile(url, cachePath) {
-    return new Promise((resolve) => {
-      const msg = Soup.Message.new('GET', url);
+downloadAttachmentFile(url, cachePath, cb) {
+    const msg = Soup.Message.new('GET', url);
 
-      if (this.acceptSelfSigned === 'true') {
-        msg.connect('accept-certificate', (_msg, _cert, errors) => {
-          return errors === Gio.TlsCertificateFlags.UNKNOWN_CA;
-        });
-      }
-
-      if (this.apiKey) {
-        msg.request_headers.append('Authorization', 'Bearer ' + this.apiKey);
-      }
-
-      this.session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
-        try {
-          const bytes = sess.send_and_read_finish(result);
-          const data = bytes.get_data();
-          const size = data.length;
-
-          if (size > 5 * 1024 * 1024) {
-            printerr(`[history] File too large (${size} bytes), skipping: ${url}`);
-            resolve(null);
-            return;
-          }
-
-          const file = Gio.File.new_for_path(cachePath);
-          const ostream = file.replace(
-            null,
-            false,
-            Gio.FileCreateFlags.REPLACE_DESTINATION,
-            null
-          );
-          ostream.write_all(data, null);
-          ostream.close(null);
-
-          print(`[history] Cached attachment: ${cachePath} (${size} bytes)`);
-          resolve(cachePath);
-        } catch (e) {
-          printerr(`[history] Failed to download/cache file: ${e.message}`);
-          resolve(null);
-        }
+    if (this.acceptSelfSigned === 'true') {
+      msg.connect('accept-certificate', (_msg, _cert, errors) => {
+        return errors === Gio.TlsCertificateFlags.UNKNOWN_CA;
       });
+    }
+
+    if (this.apiKey) {
+      msg.request_headers.append('Authorization', 'Bearer ' + this.apiKey);
+    }
+
+    this.session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+      try {
+        const bytes = sess.send_and_read_finish(result);
+        const data = bytes.get_data();
+        const size = data.length;
+
+        if (size > 5 * 1024 * 1024) {
+          if (debug) console.warn(`[history] File too large (${size} bytes), skipping: ${url}`);
+          cb(null);
+          return;
+        }
+
+        const file = Gio.File.new_for_path(cachePath);
+        const ostream = file.replace(
+          null,
+          false,
+          Gio.FileCreateFlags.REPLACE_DESTINATION,
+          null
+        );
+        ostream.write_all(data, null);
+        ostream.close(null);
+
+        debugLog(`[history] Cached attachment: ${cachePath} (${size} bytes)`);
+        cb(cachePath);
+      } catch (e) {
+        if (debug) console.error(`[history] Failed to download/cache file: ${e.message}`);
+        cb(null);
+      }
     });
   }
-  
-  async downloadAttachment(attachment, notificationId) {
+
+  downloadAttachment(attachment, notificationId, cb) {
     if (!attachment || !attachment.url) {
-      return null;
+      cb(null);
+      return;
     }
-    
-    // Download all attachments (not just images)
+
     const cached = this.getCachedAttachment(notificationId, attachment.name || 'attachment');
     if (cached) {
-      return cached;
+      cb(cached);
+      return;
     }
-    
+
     const cachePath = this.getCacheFilePath(notificationId, attachment.name || 'attachment');
-    return await this.downloadAttachmentFile(attachment.url, cachePath);
+    this.downloadAttachmentFile(attachment.url, cachePath, cb);
   }
 }
 
-const args = ARGV;
-if (args.length < 6) {
-    print('Usage: history-dialog.js serverUrl apiKey acceptSelfSigned initialTopic topic1,topic2,... muted');
-    imports.system.exit(1);
-}
+export async function main() {
+  await _loadAppLibs();
 
-const [serverUrl, apiKey, acceptSelfSigned, initialTopic, topicsArg, mutedArg] = args;
+  const args = ARGV;
+  if (args.length < 6) {
+    print('Usage: history-dialog.js serverUrl apiKey acceptSelfSigned initialTopic topic1,topic2,... muted');
+    return 1;
+  }
+
+  const [serverUrl, apiKey, acceptSelfSigned, initialTopic, topicsArg, mutedArg] = args;
 const isMutedInitially = mutedArg === 'true';
 const globalBaseUrl = serverUrl.replace(/\/$/, '');
 
@@ -170,6 +193,12 @@ app.connect('activate', () => {
         title: 'ntfy',
         default_width: 900,
         default_height: 600,
+    });
+
+    // Abort downloader session on close so the process can exit cleanly
+    window.connect('close-request', () => {
+        if (attachmentDownloader) attachmentDownloader.dispose();
+        return false;
     });
 
     // === HEADER BAR ===
@@ -273,22 +302,40 @@ app.connect('activate', () => {
         topicItems[t] = { row, countLabel };
     }
 
+    // Read a store/temp file (async IO, callback style).
+    // ponytail: callback, not Promise — in a standalone `gjs -m` app the
+    // promise job queue is only drained while the module is evaluating, so
+    // `.then`/`await` continuations after `app.run()` starts never run.
+    function _readFileContents(filePath, cb) {
+        const file = Gio.File.new_for_path(filePath);
+        if (!file.query_exists(null)) { cb(null); return; }
+        file.load_contents_async(null, (source, result) => {
+            try {
+                const [ok, contents] = source.load_contents_finish(result);
+                cb(ok ? contents : null);
+            } catch (e) { cb(null); }
+        });
+    }
+
     // Load unread counts from local store
     function _loadTopicCounts() {
-        for (const t of allTopics) {
-            const storePath = _storePath(t);
-            try {
-                if (GLib.file_test(storePath, GLib.FileTest.EXISTS)) {
-                    const [ok, contents] = GLib.file_get_contents(storePath);
-                    if (ok && contents) {
+        let i = 0;
+        function next() {
+            if (i >= allTopics.length) return;
+            const t = allTopics[i++];
+            _readFileContents(_storePath(t), (contents) => {
+                try {
+                    if (contents) {
                         const data = JSON.parse(new TextDecoder().decode(contents));
                         const unread = (data.notifications || []).filter(n => n.new !== false && n.new !== 0).length;
                         topicCounts[t] = unread;
                         topicItems[t].countLabel.set_text(unread > 0 ? String(unread) : '');
                     }
-                }
-            } catch (e) { /* skip */ }
+                } catch (e) { /* skip */ }
+                next();
+            });
         }
+        next();
     }
     _loadTopicCounts();
 
@@ -525,7 +572,7 @@ app.connect('activate', () => {
                 box.append(placeholder);
                 
                 // Download asynchronously
-                downloader.downloadAttachment(m.attachment, m.id).then(cachePath => {
+                downloader.downloadAttachment(m.attachment, m.id, (cachePath) => {
                     if (cachePath) {
                         const picture = _createImagePicture(cachePath);
                         if (picture) {
@@ -547,67 +594,54 @@ app.connect('activate', () => {
             if (attUrl && !isImage) {
                 // Non-image attachment: download and open with default app
                 const downloader = initAttachmentDownloader();
-                printerr(`[history] Non-image attachment: ${att.name}, type: ${att.type}, url: ${attUrl}`);
+                if (debug) console.warn(`[history] Non-image attachment: ${att.name}, type: ${att.type}, url: ${attUrl}`);
                 const attBtn = new Gtk.Button({
                     label: `\uD83D\uDCCE ${attText}`,
                     halign: Gtk.Align.START,
                 });
                 attBtn.connect('clicked', () => {
-                    printerr(`[history] Button clicked: ${att.name}`);
+                    debugLog(`[history] Button clicked: ${att.name}`);
                     const cached = downloader.getCachedAttachment(m.id, att.name || 'attachment');
-                    printerr(`[history] Cached: ${cached}`);
+                    debugLog(`[history] Cached: ${cached}`);
                     if (cached) {
-                        printerr(`[history] Using cached file: ${cached}`);
+                        debugLog(`[history] Using cached file: ${cached}`);
                         const file = Gio.File.new_for_path(cached);
                         const appInfo = Gio.AppInfo.get_default_for_type(att.type || 'application/octet-stream', false);
-                        printerr(`[history] AppInfo: ${appInfo ? appInfo.get_id() : 'null'}`);
+                        debugLog(`[history] AppInfo: ${appInfo ? appInfo.get_id() : 'null'}`);
                         if (appInfo) {
                             try {
                                 appInfo.launch([file], null);
-                                printerr(`[history] Launched with ${appInfo.get_id()}`);
+                                debugLog(`[history] Launched with ${appInfo.get_id()}`);
                             } catch (e) {
-                                printerr(`[history] Launch error: ${e.message}`);
+                                if (debug) console.error(`[history] Launch error: ${e.message}`);
                                 GLib.spawn_command_line_async(`xdg-open '${cached}'`);
                             }
                         } else {
                             GLib.spawn_command_line_async(`xdg-open '${cached}'`);
                         }
                     } else {
-                        printerr(`[history] Not cached, downloading from ${att.url}`);
-                        printerr(`[history] downloader object: ${downloader}`);
-                        printerr(`[history] downloader.downloadAttachment: ${downloader.downloadAttachment}`);
-                        printerr(`[history] Calling downloadAttachment with att=${JSON.stringify(att)}, m.id=${m.id}`);
-                        const result = downloader.downloadAttachment(att, m.id);
-                        printerr(`[history] downloadAttachment returned: ${result}`);
-                        if (result && typeof result.then === 'function') {
-                            result.then(newCachePath => {
-                                printerr(`[history] Download result: ${newCachePath}`);
-                                if (newCachePath) {
-                                    const file = Gio.File.new_for_path(newCachePath);
-                                    const appInfo = Gio.AppInfo.get_default_for_type(att.type || 'application/octet-stream', false);
-                                    printerr(`[history] Opening with: ${appInfo ? appInfo.get_id() : 'null'}`);
-                                    if (appInfo) {
-                                        try {
-                                            appInfo.launch([file], null);
-                                        } catch (e) {
-                                            printerr(`[history] Launch error: ${e.message}`);
-                                            GLib.spawn_command_line_async(`xdg-open '${newCachePath}'`);
-                                        }
-                                    } else {
+                        debugLog(`[history] Not cached, downloading from ${att.url}`);
+                        downloader.downloadAttachment(att, m.id, (newCachePath) => {
+                            debugLog(`[history] Download result: ${newCachePath}`);
+                            if (newCachePath) {
+                                const file = Gio.File.new_for_path(newCachePath);
+                                const appInfo = Gio.AppInfo.get_default_for_type(att.type || 'application/octet-stream', false);
+                                debugLog(`[history] Opening with: ${appInfo ? appInfo.get_id() : 'null'}`);
+                                if (appInfo) {
+                                    try {
+                                        appInfo.launch([file], null);
+                                    } catch (e) {
+                                        if (debug) console.error(`[history] Launch error: ${e.message}`);
                                         GLib.spawn_command_line_async(`xdg-open '${newCachePath}'`);
                                     }
                                 } else {
-                                    printerr(`[history] Download failed, opening URL`);
-                                    GLib.spawn_command_line_async(`xdg-open '${attUrl}'`);
+                                    GLib.spawn_command_line_async(`xdg-open '${newCachePath}'`);
                                 }
-                            }).catch(e => {
-                                printerr(`[history] Download error: ${e.message}`);
+                            } else {
+                                if (debug) console.warn('[history] Download failed, opening URL');
                                 GLib.spawn_command_line_async(`xdg-open '${attUrl}'`);
-                            });
-                        } else {
-                            printerr(`[history] downloadAttachment did not return a Promise: ${result}`);
-                            GLib.spawn_command_line_async(`xdg-open '${attUrl}'`);
-                        }
+                            }
+                        });
                     }
                 });
                 box.append(attBtn);
@@ -645,7 +679,7 @@ app.connect('activate', () => {
             const iw = pixbuf.get_width();
             const ih = pixbuf.get_height();
             if (iw <= 0 || ih <= 0) {
-                printerr(`[history] Invalid image dimensions ${iw}x${ih}: ${cachePath}`);
+                if (debug) console.warn(`[history] Invalid image dimensions ${iw}x${ih}: ${cachePath}`);
                 return null;
             }
 
@@ -713,14 +747,14 @@ app.connect('activate', () => {
                         }
                     }
                 } catch (e) {
-                    printerr(`[history] Failed to open image: ${e.message}`);
+                    if (debug) console.error(`[history] Failed to open image: ${e.message}`);
                 }
             });
             picture.add_controller(gesture);
 
             return picture;
         } catch (e) {
-            printerr(`[history] Failed to load image: ${e.message}`);
+            if (debug) console.error(`[history] Failed to load image: ${e.message}`);
             return null;
         }
     }
@@ -737,21 +771,23 @@ app.connect('activate', () => {
             ostream.write_all(new TextEncoder().encode(line), null);
             ostream.close(null);
         } catch (e) {
-            printerr(`[history] sendCommand failed: ${e.message}`);
+            if (debug) console.error(`[history] sendCommand failed: ${e.message}`);
         }
     }
 
+    // Mark one message read locally (sidecar for own UI, store update is
+    // authoritative via the command poller in the shell)
     function _markReadInStore(t, id) {
-        try {
-            const storePath = _storePath(t);
-            if (!GLib.file_test(storePath, GLib.FileTest.EXISTS)) return;
-            const [ok, contents] = GLib.file_get_contents(storePath);
-            if (!ok || !contents) return;
-            const data = JSON.parse(new TextDecoder().decode(contents));
-            const n = (data.notifications || []).find(x => x.id === id);
-            if (n) { n.new = false; }
-            GLib.file_set_contents(storePath, JSON.stringify(data, null, 2));
-        } catch (e) { /* ignore */ }
+        const storePath = _storePath(t);
+        _readFileContents(storePath, (contents) => {
+            try {
+                if (!contents) return;
+                const data = JSON.parse(new TextDecoder().decode(contents));
+                const n = (data.notifications || []).find(x => x.id === id);
+                if (n) { n.new = false; }
+                GLib.file_set_contents(storePath, JSON.stringify(data, null, 2));
+            } catch (e) { /* ignore */ }
+        });
     }
 
     // === Load messages from local store ===
@@ -766,26 +802,23 @@ app.connect('activate', () => {
 
         const storePath = _storePath(t);
 
-        try {
-            if (GLib.file_test(storePath, GLib.FileTest.EXISTS)) {
-                const [ok, contents] = GLib.file_get_contents(storePath);
-                if (ok && contents) {
+        _readFileContents(storePath, (contents) => {
+            try {
+                if (contents) {
                     const data = JSON.parse(new TextDecoder().decode(contents));
                     const notifications = data.notifications || [];
-                    printerr(`[history] Loaded ${notifications.length} messages from ${t}`);
+                    debugLog(`[history] Loaded ${notifications.length} messages from ${t}`);
                     for (const m of notifications) {
                         _appendRow(m);
                     }
-                    printerr(`[history] Added ${notifications.length} rows to listbox`);
+                    debugLog(`[history] Added ${notifications.length} rows to listbox`);
                 } else {
-                    printerr(`[history] No contents in ${storePath}`);
+                    debugLog(`[history] No contents in ${storePath}`);
                 }
-            } else {
-                printerr(`[history] Store file does not exist: ${storePath}`);
+            } catch (e) {
+                if (debug) console.error(`[history] Failed to load store for ${t}: ${e.message}`);
             }
-        } catch (e) {
-            printerr(`[history] Failed to load store for ${t}: ${e.message}`);
-        }
+        });
     }
 
     // === Update topic count in sidebar ===
@@ -794,48 +827,39 @@ app.connect('activate', () => {
         topicItems[t].countLabel.set_text(unread > 0 ? String(unread) : '');
     }
 
-    function _updateTopicCount(t) {
-        const storePath = _storePath(t);
-        try {
-            if (GLib.file_test(storePath, GLib.FileTest.EXISTS)) {
-                const [ok, contents] = GLib.file_get_contents(storePath);
-                if (ok && contents) {
-                    const data = JSON.parse(new TextDecoder().decode(contents));
-                    const unread = (data.notifications || []).filter(n => n.new !== false && n.new !== 0).length;
-                    _setTopicCount(t, unread);
-                }
-            }
-        } catch (e) { /* skip */ }
-    }
-
     // === Temp file poller (per current topic) ===
     let _lastReadPos = 0;
+    let _pollBusy = false;
 
     function _pollTempFile() {
-        try {
-            const path = _tmpPath(currentTopic);
-            if (!GLib.file_test(path, GLib.FileTest.EXISTS)) return true;
-            const [ok, contents] = GLib.file_get_contents(path);
-            if (!ok || !contents) return true;
-            const text = new TextDecoder().decode(contents);
-            const newText = text.slice(_lastReadPos);
-            if (newText.length === 0) return true;
-            _lastReadPos = text.length;
-            for (const line of newText.split('\n')) {
-                if (!line.trim()) continue;
-                try {
-                    const m = JSON.parse(line.trim());
-                    _appendRow(m, true);
-                    const adj = scrolled.get_vadjustment();
-                    adj.set_value(0);
-                } catch (e) { /* skip */ }
-            }
-        } catch (e) { /* ignore */ }
-        return true;
+        if (_pollBusy) return GLib.SOURCE_CONTINUE;
+        _pollBusy = true;
+        const path = _tmpPath(currentTopic);
+        _readFileContents(path, (contents) => {
+            _pollBusy = false;
+            try {
+                if (!contents) return;
+                const text = new TextDecoder().decode(contents);
+                const newText = text.slice(_lastReadPos);
+                if (newText.length === 0) return;
+                _lastReadPos = text.length;
+                for (const line of newText.split('\n')) {
+                    if (!line.trim()) continue;
+                    try {
+                        const m = JSON.parse(line.trim());
+                        _appendRow(m, true);
+                        debugLog(`[history] Live row appended for ${currentTopic}`);
+                        const adj = scrolled.get_vadjustment();
+                        adj.set_value(0);
+                    } catch (e) { /* skip */ }
+                }
+            } catch (e) { /* ignore */ }
+        });
+        return GLib.SOURCE_CONTINUE;
     }
 
     function _startFilePoller() {
-        printerr('[history] file poller started');
+        debugLog('[history] file poller started');
         GLib.timeout_add(GLib.PRIORITY_LOW, 500, _pollTempFile);
     }
 
@@ -887,7 +911,7 @@ app.connect('activate', () => {
                 sess.send_and_read_finish(result);
                 publishEntry.set_text('');
             } catch (e) {
-                printerr(`[history] Publish failed: ${e.message}`);
+                if (debug) console.error(`[history] Publish failed: ${e.message}`);
             }
             sendBtn.set_label('Send');
             sendBtn.set_sensitive(true);
@@ -1007,56 +1031,70 @@ app.connect('activate', () => {
             publishBtn.set_sensitive(false);
             publishBtn.set_label('Sending...');
 
+                const doSend = (fileBytes) => {
                 let url = topicUrlMap[currentTopic];
+
+                if (fileBytes !== null) {
+                    const fileName = attachFilePath.split('/').pop();
+                    const queryParts = ['filename=' + encodeURIComponent(fileName)];
+                    if (text) queryParts.push('message=' + encodeURIComponent(text));
+                    url += '?' + queryParts.join('&');
+
+                    const httpMsg = Soup.Message.new('PUT', url);
+                    if (apiKey) httpMsg.request_headers.append('Authorization', 'Bearer ' + apiKey);
+                    if (acceptSelfSigned === 'true') httpMsg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
+                    for (const [k, v] of Object.entries(headers)) httpMsg.request_headers.append(k, v);
+                    httpMsg.set_request_body_from_bytes(null, fileBytes);
+
+                    session.send_and_read_async(httpMsg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+                        try {
+                            sess.send_and_read_finish(result);
+                            dlg.close();
+                        } catch (e) {
+                            if (debug) console.error(`[history] Publish failed: ${e.message}`);
+                            publishBtn.set_label('Publish');
+                            publishBtn.set_sensitive(true);
+                        }
+                    });
+                } else {
+                    if (!text) return;
+                    const httpMsg = Soup.Message.new('POST', url);
+                    if (apiKey) httpMsg.request_headers.append('Authorization', 'Bearer ' + apiKey);
+                    if (acceptSelfSigned === 'true') httpMsg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
+                    for (const [k, v] of Object.entries(headers)) httpMsg.request_headers.append(k, v);
+                    httpMsg.set_request_body_from_bytes('text/plain', new TextEncoder().encode(text));
+
+                    session.send_and_read_async(httpMsg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+                        try {
+                            sess.send_and_read_finish(result);
+                            dlg.close();
+                        } catch (e) {
+                            if (debug) console.error(`[history] Publish failed: ${e.message}`);
+                            publishBtn.set_label('Publish');
+                            publishBtn.set_sensitive(true);
+                        }
+                    });
+                }
+            };
 
             if (attachFilePath) {
                 const file = Gio.File.new_for_path(attachFilePath);
-                const [ok, fileBytes] = file.load_contents(null);
-                if (!ok) {
-                    printerr('[history] Failed to read attachment file');
-                    publishBtn.set_label('Publish');
-                    publishBtn.set_sensitive(true);
-                    return;
-                }
-                const fileName = attachFilePath.split('/').pop();
-                const queryParts = ['filename=' + encodeURIComponent(fileName)];
-                if (text) queryParts.push('message=' + encodeURIComponent(text));
-                url += '?' + queryParts.join('&');
-
-                const httpMsg = Soup.Message.new('PUT', url);
-                if (apiKey) httpMsg.request_headers.append('Authorization', 'Bearer ' + apiKey);
-                if (acceptSelfSigned === 'true') httpMsg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
-                for (const [k, v] of Object.entries(headers)) httpMsg.request_headers.append(k, v);
-                httpMsg.set_request_body_from_bytes(null, fileBytes);
-
-                session.send_and_read_async(httpMsg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+                file.load_contents_async(null, (source, result) => {
+                    let fileBytes = null;
                     try {
-                        sess.send_and_read_finish(result);
-                        dlg.close();
+                        const [ok, bytes] = source.load_contents_finish(result);
+                        if (!ok) throw new Error('read failed');
+                        fileBytes = bytes;
                     } catch (e) {
-                        printerr(`[history] Publish failed: ${e.message}`);
+                        if (debug) console.error('[history] Failed to read attachment file');
                         publishBtn.set_label('Publish');
                         publishBtn.set_sensitive(true);
+                        return;
                     }
+                    doSend(fileBytes);
                 });
             } else {
-                if (!text) return;
-                const httpMsg = Soup.Message.new('POST', url);
-                if (apiKey) httpMsg.request_headers.append('Authorization', 'Bearer ' + apiKey);
-                if (acceptSelfSigned === 'true') httpMsg.connect('accept-certificate', (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA);
-                for (const [k, v] of Object.entries(headers)) httpMsg.request_headers.append(k, v);
-                httpMsg.set_request_body_from_bytes('text/plain', new TextEncoder().encode(text));
-
-                session.send_and_read_async(httpMsg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
-                    try {
-                        sess.send_and_read_finish(result);
-                        dlg.close();
-                    } catch (e) {
-                        printerr(`[history] Publish failed: ${e.message}`);
-                        publishBtn.set_label('Publish');
-                        publishBtn.set_sensitive(true);
-                    }
-                });
+                doSend(null);
             }
         });
         btnRow.append(publishBtn);
@@ -1118,4 +1156,8 @@ function _formatTime(time) {
     } catch (e) { return String(time) || '??:??'; }
 }
 
-app.run([]);
+  app.run([]);
+}
+
+if (typeof ARGV !== 'undefined' && ARGV.length >= 6)
+    main().catch(e => debugLog('[history] main failed:', e));

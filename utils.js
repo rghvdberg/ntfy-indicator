@@ -17,6 +17,15 @@
 
 import GLib from 'gi://GLib';
 
+export function isDebug() {
+  return GLib.getenv('NTFY_DEBUG') !== null && GLib.getenv('NTFY_DEBUG') !== '0';
+}
+
+export function debugLog(...args) {
+  if (isDebug())
+    console.debug('[ntfy]', ...args);
+}
+
 export function getDataDir() {
   const dataDir = GLib.get_user_data_dir();
   return GLib.build_filenamev([dataDir, 'ntfy']);
@@ -53,7 +62,7 @@ export function getApiKey(settings, serverUrl) {
     const apiKeys = JSON.parse(apiKeysStr);
     return apiKeys[serverUrl] || null;
   } catch (e) {
-    logError(e, 'Failed to parse API keys');
+    debugLog('Failed to parse API keys:', e);
     return null;
   }
 }

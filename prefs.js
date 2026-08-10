@@ -21,10 +21,10 @@ import Gtk from 'gi://Gtk';
 import Gio from 'gi://Gio';
 
 import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
-import { parseTopicUrl, getApiKey } from './utils.js';
+import { parseTopicUrl, getApiKey, debugLog } from './utils.js';
 
 export default class NtfyPreferences extends ExtensionPreferences {
-  getPreferencesWidget() {
+  fillPreferencesWindow(window) {
     this.settings = this.getSettings();
 
     const page = new Adw.PreferencesPage({
@@ -38,7 +38,13 @@ export default class NtfyPreferences extends ExtensionPreferences {
     page.add(this._createSubscriptionGroup());
     page.add(this._createNotificationGroup());
 
-    return page;
+    window.add(page);
+
+    window.connect('close-request', () => {
+      this.settings = null;
+      this._currentPage = null;
+      return false;
+    });
   }
 
   _createServerGroup() {
@@ -221,7 +227,7 @@ export default class NtfyPreferences extends ExtensionPreferences {
       apiKeys[serverUrl] = apiKey;
       this.settings.set_string('api-keys', JSON.stringify(apiKeys));
     } catch (e) {
-      logError(e, 'Failed to save API key');
+      debugLog('Failed to save API key:', e);
     }
   }
 }

@@ -19,6 +19,8 @@ import Soup from 'gi://Soup';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
+import { debugLog } from './utils.js';
+
 export class NtfyApi {
   constructor(serverUrl, apiKey = null, acceptSelfSigned = false) {
     this.serverUrl = serverUrl.replace(/\/$/, '');
@@ -78,7 +80,7 @@ export class NtfyApi {
               if (parsed.id) lastId = parsed.id;
               if (onMessage) onMessage(parsed);
             } catch (e) {
-              log(`[NtfyApi] parse error: ${e.message}`);
+              debugLog(`[NtfyApi] parse error: ${e.message}`);
             }
           }
 
@@ -89,7 +91,7 @@ export class NtfyApi {
             });
           }
         } catch (e) {
-          logError(e, `[NtfyApi] subscribe failed`);
+          debugLog('[NtfyApi] subscribe failed:', e);
           if (onError) onError(e);
           const delay = Math.min(backoff * 2, 30);
           backoff = delay;
@@ -133,7 +135,7 @@ export class NtfyApi {
         session.send_and_read_finish(result);
         if (onSuccess) onSuccess();
       } catch (e) {
-        logError(e, `[NtfyApi] ${label} failed`);
+        debugLog(`[NtfyApi] ${label} failed:`, e);
         if (onError) onError(e);
       }
     });

@@ -28,7 +28,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import { subscriptionManager } from './subscription-manager.js';
 import { notificationStore } from './notification-store.js';
-import { parseTopicUrl } from './utils.js';
+import { parseTopicUrl, debugLog } from './utils.js';
 
 export const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
@@ -36,6 +36,9 @@ class Indicator extends PanelMenu.Button {
     super._init(0.0, 'ntfy-indicator');
     this.settings = settings;
     this._extension = extension;
+    this._menuGen = 0;
+    this._buttonGen = 0;
+    this._destroyed = false;
 
     const box = new St.BoxLayout({ style: 'spacing: 4px;' });
 
@@ -60,7 +63,8 @@ class Indicator extends PanelMenu.Button {
     this._rebuildMenu();
   }
 
-  _rebuildMenu() {
+  async _rebuildMenu() {
+    const gen = ++this._menuGen;
     this.menu.removeAll();
 
     const channels = this.settings.get_strv('channels');
@@ -69,17 +73,25 @@ class Indicator extends PanelMenu.Button {
     if (channels.length === 0) {
       this.menu.addMenuItem(new PopupMenu.PopupMenuItem('(no topics)'));
     } else {
+      const rows = [];
       for (const ch of channels) {
+        if (gen !== this._menuGen || this._destroyed) return;
         const { baseUrl, topic } = parseTopicUrl(ch);
         const server = baseUrl || defaultServer;
         const topicUrl = `${server}/${topic}`;
-        const count = subscriptionManager.getUnreadCount(topicUrl);
-        const label = count > 0 ? `${topic}  (${count})` : topic;
+        const count = await subscriptionManager.getUnreadCount(topicUrl);
+        if (gen !== this._menuGen || this._destroyed) return;
+        rows.push({ topic, server, count });
+      }
+      for (const r of rows) {
+        const label = r.count > 0 ? `${r.topic}  (${r.count})` : r.topic;
         const item = new PopupMenu.PopupMenuItem(label);
-        item.connect('activate', () => this._openHistoryDialog(topic, server));
+        item.connect('activate', () => this._openHistoryDialog(r.topic, r.server));
         this.menu.addMenuItem(item);
       }
     }
+
+    if (gen !== this._menuGen || this._destroyed) return;
 
     this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -101,12 +113,12 @@ class Indicator extends PanelMenu.Button {
     });
 
     this._connectionListener = () => {
-      try { this._updateButtonText(); } catch (e) { logError(e, '[ntfy] _updateButtonText failed'); }
+      this._updateButtonText().catch(e => debugLog('[ntfy] _updateButtonText failed:', e));
     };
     subscriptionManager.addConnectionListener(this._connectionListener);
     notificationStore.setOnChange(() => {
-      this._rebuildMenu();
-      try { this._updateButtonText(); } catch (e) { logError(e, '[ntfy] _updateButtonText failed'); }
+      this._rebuildMenu().catch(e => debugLog('[ntfy] _rebuildMenu failed:', e));
+      this._updateButtonText().catch(e => debugLog('[ntfy] _updateButtonText failed:', e));
     });
   }
 
@@ -128,21 +140,25 @@ class Indicator extends PanelMenu.Button {
     this._startSubscriptions();
   }
 
-  _updateButtonText() {
+  async _updateButtonText() {
+    const gen = ++this._buttonGen;
     let total = 0;
     const defaultServer = this.settings.get_string('server');
     for (const ch of this.settings.get_strv('channels')) {
+      if (gen !== this._buttonGen || this._destroyed) return;
       const { baseUrl, topic } = parseTopicUrl(ch);
       const topicUrl = `${baseUrl || defaultServer}/${topic}`;
-      const count = subscriptionManager.getUnreadCount(topicUrl);
+      const count = await subscriptionManager.getUnreadCount(topicUrl);
       total += count;
     }
+    if (gen !== this._buttonGen || this._destroyed) return;
     if (this._countLabel) {
     this._countLabel.set_text(total > 0 ? `(${total})` : '');
   }
   }
 
   destroy() {
+    this._destroyed = true;
     if (this._settingsChangedId)
       this.settings.disconnect(this._settingsChangedId);
     subscriptionManager.removeConnectionListener(this._connectionListener);

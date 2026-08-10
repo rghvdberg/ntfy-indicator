@@ -20,6 +20,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import { Indicator } from './indicator.js';
 import { initSubscriptionManager, subscriptionManager } from './subscription-manager.js';
+import { debugLog } from './utils.js';
+import './history-dialog.js';
 
 export default class NtfyExtension extends Extension {
   enable() {
@@ -27,7 +29,7 @@ export default class NtfyExtension extends Extension {
     initSubscriptionManager(this._settings);
     this._indicator = new Indicator(this._settings, this);
     Main.panel.addToStatusArea(this.uuid, this._indicator);
-    log('[ntfy] Extension enabled');
+    debugLog('Extension enabled');
   }
 
   disable() {
@@ -37,6 +39,6 @@ export default class NtfyExtension extends Extension {
       this._indicator = null;
     }
     this._settings = null;
-    log('[ntfy] Extension disabled');
+    debugLog('Extension disabled');
   }
 }
