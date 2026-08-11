@@ -54,6 +54,15 @@ incremental resume, and never re-notifying a message that has already been seen.
 ## Testing / deployment boundaries
 - All testing and deployment happens on the **ntfy-dev VM**, synced via
   `./vm-sync.sh`.
+- **Sending test messages** — general recipe (uses `-T` so the file is an
+  attachment; small text files need the `Filename` header to count as an
+  attachment, otherwise files ≤4096 bytes are treated as a plain message body):
+  ```
+  curl -T /path/to/file -H "Filename: file.txt" -H "Title: your title here" -H "Message: your message here" https://ntfy.domain.com/topic
+  ```
+  For a plain text message instead of an attachment, drop `-T` and use
+  `-d "message text"`. On the dev VM, target `https://server.cup.cake:12707`
+  and add `-k` (self-signed).
 
 ## Verification
 - The extension must pass the **shexli check** before deploying. shexli 0.2.1
@@ -73,3 +82,23 @@ incremental resume, and never re-notifying a message that has already been seen.
   3. `venv/bin/shexli build/ntfy-indicator@rghvdberg.shell-extension.zip`
 - Deploy + verify on the VM; confirm the extension reports
   `Enabled: Yes / State: ACTIVE`.
+
+## Known issues / deferred
+- **History dialog scroll glitch on delete** (`history-dialog.js`): deleting a
+  message makes the list briefly jump to the top then back to the current
+  position. Cosmetic only; cause not documented by GTK — the fixed 150 ms
+  scroll-restore in the delete handler races GTK's async relayout of the
+  ListBox. Deferred: rewrite the message list with `GtkListView` + `GListModel`
+  (the GTK 4 recommended approach for mutable lists) in a future release.
+
+## Deferred maintenance plan (audit 2026-08)
+- **Phase 1 (safe trims)**: delete dead `SubscriptionManager.destroy()`
+  (`subscription-manager.js:169-179`); drop `getUnreadCount()` passthrough
+  (416-418, call `notificationStore` directly); inline `indicator._syncChannels`
+  and `_openHistoryDialog` single-caller wrappers.
+- **Phase 2 (stdlib)**: replace the manual URL split in `parseTopicUrl`
+  (`utils.js:44-62`) with `GLib.Uri.parse()` when a scheme is present; keep the
+  bare-topic branch. Verify on VM (feeds indicator/prefs/dialog/topic switch).
+- Verify after any phase: `node --check`, repack zip (same `extra-source` list),
+  `venv/bin/shexli` on the zip, `./vm-sync.sh`, extension `ACTIVE`. No version
+  bump (internal refactor).
