@@ -809,7 +809,17 @@ app.connect('activate', () => {
 
     // === Load messages from local store ===
     let _lastTopId = null; // newest id from last load; scroll to top when it changes
+    let _loadedTopic = null; // topic whose rows are currently in the listbox
     const _rowById = new Map(); // id -> ListBoxRow of the current list
+    function _clearRows() {
+        _rowById.clear();
+        let child = msgListBox.get_first_child();
+        while (child) {
+            const next = child.get_next_sibling();
+            msgListBox.remove(child);
+            child = next;
+        }
+    }
     function _loadMessages(t) {
         const storePath = _storePath(t);
         const isCurrentTopic = t === currentTopic;
@@ -818,7 +828,13 @@ app.connect('activate', () => {
 
         _readFileContents(storePath, (contents) => {
             try {
-                if (!contents) { debugLog(`[history] No store file for ${t}`); return; }
+                if (!contents) {
+                    debugLog(`[history] No store file for ${t}`);
+                    // Topic switched to one with no local store yet — drop the
+                    // previous topic's rows so they don't leak into this view.
+                    if (t !== _loadedTopic) _clearRows();
+                    return;
+                }
                 const data = JSON.parse(new TextDecoder().decode(contents));
                 const notifications = data.notifications || [];
                 const topId = notifications.length ? notifications[0].id : null;
@@ -838,13 +854,8 @@ app.connect('activate', () => {
                 debugLog(`[history] Loaded ${notifications.length} messages from ${t}`);
                 // Clear + repopulate in one main-loop turn so the empty state never
                 // gets a layout pass (which would clamp the scroll to top).
-                _rowById.clear();
-                let child = msgListBox.get_first_child();
-                while (child) {
-                    const next = child.get_next_sibling();
-                    msgListBox.remove(child);
-                    child = next;
-                }
+                _clearRows();
+                _loadedTopic = t;
                 for (const m of notifications) {
                     _appendRow(m);
                 }
