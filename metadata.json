@@ -2,7 +2,7 @@
   "name": "ntfy Indicator",
   "description": "Desktop notifications via ntfy - Subscribe to channels and receive real-time notifications",
   "uuid": "ntfy-indicator@rghvdberg",
-  "version": "0.3.0",
+  "version": "0.1.0",
   "shell-version": [
     "50"
   ],
