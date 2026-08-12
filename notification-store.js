@@ -80,6 +80,7 @@ export class NotificationStore {
   }
 
   async _persist(topicUrl, notifications, seenIds, lastId, limit) {
+    this._ensureDataDir();
     const sorted = limit == null
       ? notifications
       : notifications.sort((a, b) => b.time - a.time).slice(0, limit);
@@ -107,6 +108,7 @@ export class NotificationStore {
             source.replace_contents_finish(result);
             resolve(true);
           } catch (e) {
+            debugLog(`[ntfy] write failed: ${file.get_path()}:`, e);
             resolve(false);
           }
         }
