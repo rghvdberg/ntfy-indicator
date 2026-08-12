@@ -24,6 +24,12 @@ incremental resume, and never re-notifying a message that has already been seen.
 - **Subscription manager** (`subscription-manager.js`): one feed per topic,
   delivers new messages to the store and desktop, handles mute (expiry-based)
   and publish.
+- **Server deletes/clears are append-only**: ntfy keeps the original row and
+  emits `message_delete`/`message_clear` tombstones (`sequence_id` = message
+  id). The extension **receives** them (delete → `deleteNotification`, clear →
+  `markRead`, both advance `lastId`), and `api.js` converts replayed messages
+  whose tombstone is in the same poll batch, so `since=all` never re-notifies
+  them. It never **sends** deletes/clears — the web app doesn't either.
 - **Store** (`notification-store.js`): per-topic JSON files in
   `~/.local/share/ntfy/` holding `notifications`, `seenIds`, `lastId`. This is
   the single source of truth for what is new, read, or deleted.
@@ -63,6 +69,12 @@ incremental resume, and never re-notifying a message that has already been seen.
   For a plain text message instead of an attachment, drop `-T` and use
   `-d "message text"`. On the dev VM, target `https://server.cup.cake:12707`
   and add `-k` (self-signed).
+- **Testing delete/clear tombstones** on the dev server (sequence id defaults
+  to the message id from the feed):
+  ```
+  curl -sk -X DELETE https://server.cup.cake:12707/<topic>/<id>
+  curl -sk -X PUT https://server.cup.cake:12707/<topic>/<id>/clear
+  ```
 
 ## Verification
 - The extension must pass the **shexli check** before deploying. shexli 0.2.1
@@ -76,12 +88,20 @@ incremental resume, and never re-notifying a message that has already been seen.
      `.github/workflows/build-extension.yml` (api.js, attachment-downloader.js,
      history-dialog.js, indicator.js, notification-store.js,
      subscription-manager.js, utils.js, LICENSE, icons). Keep the two lists in
-     sync whenever files are added or removed.
+     sync whenever files are added or removed. Delete the old zip first —
+     `zip` in-place update corrupts CRC entries.
   2. Run the workflow's "Verify zip contains all required files" checks
      (every required file present, nothing extra at the zip root).
   3. `venv/bin/shexli build/ntfy-indicator@rghvdberg.shell-extension.zip`
 - Deploy + verify on the VM; confirm the extension reports
   `Enabled: Yes / State: ACTIVE`.
+- **GNOME Shell caches extension JS modules per process**: enable/disable in
+  the same session does not re-import code, and a freshly zip-installed
+  extension may not appear in `gnome-extensions list` until the session
+  restarts. After any install/wipe on the VM, restart the session
+  (`sudo systemctl restart gdm`) before judging behavior. Related: the store
+  dir is self-healed in `_persist`, but mid-session deletion of
+  `~/.local/share/ntfy` is not a supported scenario.
 
 ## Known issues / deferred
 - **History dialog scroll glitch on delete** (`history-dialog.js`): deleting a
@@ -90,15 +110,3 @@ incremental resume, and never re-notifying a message that has already been seen.
   scroll-restore in the delete handler races GTK's async relayout of the
   ListBox. Deferred: rewrite the message list with `GtkListView` + `GListModel`
   (the GTK 4 recommended approach for mutable lists) in a future release.
-
-## Deferred maintenance plan (audit 2026-08)
-- **Phase 1 (safe trims)**: delete dead `SubscriptionManager.destroy()`
-  (`subscription-manager.js:169-179`); drop `getUnreadCount()` passthrough
-  (416-418, call `notificationStore` directly); inline `indicator._syncChannels`
-  and `_openHistoryDialog` single-caller wrappers.
-- **Phase 2 (stdlib)**: replace the manual URL split in `parseTopicUrl`
-  (`utils.js:44-62`) with `GLib.Uri.parse()` when a scheme is present; keep the
-  bare-topic branch. Verify on VM (feeds indicator/prefs/dialog/topic switch).
-- Verify after any phase: `node --check`, repack zip (same `extra-source` list),
-  `venv/bin/shexli` on the zip, `./vm-sync.sh`, extension `ACTIVE`. No version
-  bump (internal refactor).
