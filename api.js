@@ -85,17 +85,15 @@ export class NtfyApi {
             }
           }
           // Tombstoned replay: within a batch, messages that also carry a
-          // message_delete are forwarded as deletes so they never re-notify.
-          const deletedIds = new Set(
-            parsedLines
-              .filter(p => p.event === 'message_delete' && p.sequence_id)
-              .map(p => p.sequence_id)
-          );
-          const clearedIds = new Set(
-            parsedLines
-              .filter(p => p.event === 'message_clear' && p.sequence_id)
-              .map(p => p.sequence_id)
-          );
+          // message_delete/message_clear are forwarded as the tombstone so they
+          // never re-notify.
+          const deletedIds = new Set();
+          const clearedIds = new Set();
+          for (const p of parsedLines) {
+            if (!p.sequence_id) continue;
+            if (p.event === 'message_delete') deletedIds.add(p.sequence_id);
+            else if (p.event === 'message_clear') clearedIds.add(p.sequence_id);
+          }
           for (const parsed of parsedLines) {
             if (onMessage) {
               if (parsed.event === 'message' && deletedIds.has(parsed.id)) {

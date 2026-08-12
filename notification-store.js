@@ -190,23 +190,8 @@ export class NotificationStore {
       const data = (await this._readData(topicUrl)) || {};
       const notifications = data.notifications || [];
       const idx = notifications.findIndex(n => n.id === notificationId);
-      if (idx === -1) return false;
-      notifications.splice(idx, 1);
-      const seenIds = data.seenIds || [];
-      if (!seenIds.includes(notificationId)) seenIds.push(notificationId);
-      await this._persist(topicUrl, notifications, seenIds, data.lastId || null, null);
-      this._notify();
-      return true;
-    });
-  }
-
-  async markDeleted(topicUrl, notificationId) {
-    return this._enqueue(topicUrl, async () => {
-      const data = (await this._readData(topicUrl)) || {};
-      const notifications = data.notifications || [];
-      const seenIds = data.seenIds || [];
-      const idx = notifications.findIndex(n => n.id === notificationId);
       if (idx !== -1) notifications.splice(idx, 1);
+      const seenIds = data.seenIds || [];
       if (!seenIds.includes(notificationId)) seenIds.push(notificationId);
       await this._persist(topicUrl, notifications, seenIds, data.lastId || null, null);
       this._notify();

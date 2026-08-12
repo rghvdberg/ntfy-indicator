@@ -187,7 +187,7 @@ export class SubscriptionManager {
   async _handleMessage(topicUrl, msg, limit) {
     // A server-side delete (or a deleted replay message) stays gone forever
     if (msg.event === 'message_delete') {
-      await notificationStore.markDeleted(topicUrl, msg.sequence_id || msg.id);
+      await notificationStore.deleteNotification(topicUrl, msg.sequence_id || msg.id);
       await notificationStore.setLastMessageId(topicUrl, msg.id);
       return;
     }
