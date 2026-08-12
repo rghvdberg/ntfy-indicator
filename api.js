@@ -73,14 +73,38 @@ export class NtfyApi {
           backoff = 1;
 
           const lines = text.trim().split('\n');
+          const parsedLines = [];
           for (const line of lines) {
             if (!line.trim()) continue;
             try {
               const parsed = JSON.parse(line);
               if (parsed.id) lastId = parsed.id;
-              if (onMessage) onMessage(parsed);
+              parsedLines.push(parsed);
             } catch (e) {
               debugLog(`[NtfyApi] parse error: ${e.message}`);
+            }
+          }
+          // Tombstoned replay: within a batch, messages that also carry a
+          // message_delete are forwarded as deletes so they never re-notify.
+          const deletedIds = new Set(
+            parsedLines
+              .filter(p => p.event === 'message_delete' && p.sequence_id)
+              .map(p => p.sequence_id)
+          );
+          const clearedIds = new Set(
+            parsedLines
+              .filter(p => p.event === 'message_clear' && p.sequence_id)
+              .map(p => p.sequence_id)
+          );
+          for (const parsed of parsedLines) {
+            if (onMessage) {
+              if (parsed.event === 'message' && deletedIds.has(parsed.id)) {
+                onMessage({ event: 'message_delete', sequence_id: parsed.id, id: parsed.id, topic: parsed.topic });
+              } else if (parsed.event === 'message' && clearedIds.has(parsed.id)) {
+                onMessage({ event: 'message_clear', sequence_id: parsed.id, id: parsed.id, topic: parsed.topic });
+              } else {
+                onMessage(parsed);
+              }
             }
           }
 

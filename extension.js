@@ -35,7 +35,7 @@ export default class NtfyExtension extends Extension {
   }
 
   disable() {
-    if (subscriptionManager) subscriptionManager.unsubscribeAll();
+    if (subscriptionManager) subscriptionManager.destroy();
     if (this._indicator) {
       this._indicator.destroy();
       this._indicator = null;

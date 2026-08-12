@@ -42,23 +42,14 @@ export function getNotificationFile(topicUrl) {
 }
 
 export function parseTopicUrl(topicUrl) {
-  if (topicUrl.includes('://')) {
-    // Split manually to avoid depending on URL constructor
-    const protoEnd = topicUrl.indexOf('://');
-    const proto = topicUrl.substring(0, protoEnd);
-    const rest = topicUrl.substring(protoEnd + 3);
-    const slashIdx = rest.indexOf('/');
-    if (slashIdx === -1) {
-      return { baseUrl: `${proto}://${rest}`, topic: '' };
-    }
-    const host = rest.substring(0, slashIdx);
-    const path = rest.substring(slashIdx);
-    const parts = path.split('/').filter(p => p);
-    const topic = parts[parts.length - 1];
-    return { baseUrl: `${proto}://${host}`, topic };
-  } else {
+  if (!topicUrl.includes('://'))
     return { baseUrl: null, topic: topicUrl };
-  }
+  const uri = GLib.Uri.parse(topicUrl, GLib.UriFlags.NONE);
+  const host = uri.get_host() || '';
+  const ipv6 = host.includes(':') ? `[${host}]` : host;
+  const baseUrl = `${uri.get_scheme()}://${ipv6}${uri.get_port() !== -1 ? `:${uri.get_port()}` : ''}`;
+  const parts = (uri.get_path() || '').split('/').filter(p => p);
+  return { baseUrl, topic: parts.length ? parts[parts.length - 1] : '' };
 }
 export function getApiKey(settings, serverUrl) {
   try {

@@ -198,6 +198,20 @@ export class NotificationStore {
     });
   }
 
+  async markDeleted(topicUrl, notificationId) {
+    return this._enqueue(topicUrl, async () => {
+      const data = (await this._readData(topicUrl)) || {};
+      const notifications = data.notifications || [];
+      const seenIds = data.seenIds || [];
+      const idx = notifications.findIndex(n => n.id === notificationId);
+      if (idx !== -1) notifications.splice(idx, 1);
+      if (!seenIds.includes(notificationId)) seenIds.push(notificationId);
+      await this._persist(topicUrl, notifications, seenIds, data.lastId || null, null);
+      this._notify();
+      return true;
+    });
+  }
+
   async getUnreadCount(topicUrl) {
     const notifications = await this.load(topicUrl);
     return notifications.filter(n => n.new !== false).length;

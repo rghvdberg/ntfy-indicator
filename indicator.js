@@ -79,14 +79,17 @@ class Indicator extends PanelMenu.Button {
         const { baseUrl, topic } = parseTopicUrl(ch);
         const server = baseUrl || defaultServer;
         const topicUrl = `${server}/${topic}`;
-        const count = await subscriptionManager.getUnreadCount(topicUrl);
+        const count = await notificationStore.getUnreadCount(topicUrl);
         if (gen !== this._menuGen || this._destroyed) return;
         rows.push({ topic, server, count });
       }
       for (const r of rows) {
         const label = r.count > 0 ? `${r.topic}  (${r.count})` : r.topic;
         const item = new PopupMenu.PopupMenuItem(label);
-        item.connect('activate', () => this._openHistoryDialog(r.topic, r.server));
+        item.connect('activate', () => {
+          this.menu.close();
+          subscriptionManager._openHistoryDialog(r.topic, r.server || this.settings.get_string('server'));
+        });
         this.menu.addMenuItem(item);
       }
     }
@@ -101,14 +104,12 @@ class Indicator extends PanelMenu.Button {
     this.menu.addMenuItem(settingsItem);
   }
 
-  _openHistoryDialog(topic, server) {
-    this.menu.close();
-    subscriptionManager._openHistoryDialog(topic, server || this.settings.get_string('server'));
-  }
-
   _setupSignals() {
     this._settingsChangedId = this.settings.connect('changed', (_settings, key) => {
-      if (key === 'channels') this._syncChannels();
+      if (key === 'channels') {
+        this._restartSubscriptions();
+        this._rebuildMenu();
+      }
       else if (key === 'server' || key === 'api-keys' || key === 'accept-self-signed') this._restartSubscriptions();
     });
 
@@ -119,12 +120,6 @@ class Indicator extends PanelMenu.Button {
       this._rebuildMenu().catch(e => debugLog('[ntfy] _rebuildMenu failed:', e));
       this._updateButtonText().catch(e => debugLog('[ntfy] _updateButtonText failed:', e));
     });
-  }
-
-  _syncChannels() {
-    // ponytail: unsubscribes all first, fine for single-channel changes
-    this._restartSubscriptions();
-    this._rebuildMenu();
   }
 
   _startSubscriptions() {
@@ -147,7 +142,7 @@ class Indicator extends PanelMenu.Button {
       if (gen !== this._buttonGen || this._destroyed) return;
       const { baseUrl, topic } = parseTopicUrl(ch);
       const topicUrl = `${baseUrl || defaultServer}/${topic}`;
-      const count = await subscriptionManager.getUnreadCount(topicUrl);
+      const count = await notificationStore.getUnreadCount(topicUrl);
       total += count;
     }
     if (gen !== this._buttonGen || this._destroyed) return;

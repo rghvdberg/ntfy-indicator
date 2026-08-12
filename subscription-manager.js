@@ -173,7 +173,7 @@ export class SubscriptionManager {
       this._commandPollerId = null;
     }
     if (this._source) {
-      Main.messageTray.remove(this._source);
+      this._source.destroy();
       this._source = null;
     }
   }
@@ -185,6 +185,17 @@ export class SubscriptionManager {
    * @param {number} limit - History limit
    */
   async _handleMessage(topicUrl, msg, limit) {
+    // A server-side delete (or a deleted replay message) stays gone forever
+    if (msg.event === 'message_delete') {
+      await notificationStore.markDeleted(topicUrl, msg.sequence_id || msg.id);
+      await notificationStore.setLastMessageId(topicUrl, msg.id);
+      return;
+    }
+    if (msg.event === 'message_clear') {
+      await notificationStore.markRead(topicUrl, msg.sequence_id || msg.id);
+      await notificationStore.setLastMessageId(topicUrl, msg.id);
+      return;
+    }
     if (msg.event !== 'message') return;
     // Check if muted
     const mutedTopics = this._parseMutedTopics();
@@ -411,10 +422,6 @@ if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('ima
     } catch (e) {
       return {};
     }
-  }
-
-  async getUnreadCount(topicUrl) {
-    return notificationStore.getUnreadCount(topicUrl);
   }
 
   /**
