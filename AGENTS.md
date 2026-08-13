@@ -60,6 +60,12 @@ incremental resume, and never re-notifying a message that has already been seen.
 ## Testing / deployment boundaries
 - All testing and deployment happens on the **ntfy-dev VM**, synced via
   `./vm-sync.sh`.
+- **Automated tests** live in `tests/`: `./tests/run.sh` runs unit suites
+  (host, gjs; store/api/utils — api tests hit the dev server with a disposable
+  topic), `./tests/test-integration.sh` runs end-to-end on the VM (deploy +
+  publish + delete/clear/replay/burst/limit/lifecycle assertions),
+  `tests/MANUAL.md` is the human UI checklist. No extension code under test is
+  modified by the test harness.
 - **Sending test messages** — general recipe (uses `-T` so the file is an
   attachment; small text files need the `Filename` header to count as an
   attachment, otherwise files ≤4096 bytes are treated as a plain message body):
