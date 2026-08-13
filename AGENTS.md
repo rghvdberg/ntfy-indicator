@@ -66,6 +66,14 @@ incremental resume, and never re-notifying a message that has already been seen.
   publish + delete/clear/replay/burst/limit/lifecycle assertions),
   `tests/MANUAL.md` is the human UI checklist. No extension code under test is
   modified by the test harness.
+- **Throwaway test VM**: `tests/vm-create.sh` builds a GNOME 50 VM from the
+  Ubuntu cloud image (cloud-init; auto-generates `tests/.vm-key`, gitignored);
+  `--fresh` recreates it. `tests/deploy-vm.sh` packs the zip and installs it
+  on the VM like a user would. Configuration is env-driven via
+  `tests/config.sh`: `NTFY_TEST_SERVER` (required for api/integration),
+  `NTFY_TEST_SELF_SIGNED`, `NTFY_TEST_VM`, `NTFY_TEST_VM_IP`,
+  `NTFY_TEST_VM_USER`, `NTFY_TEST_SSH_KEY`. The VM is treated as throwaway —
+  tests install fresh and leave no required state.
 - **Sending test messages** — general recipe (uses `-T` so the file is an
   attachment; small text files need the `Filename` header to count as an
   attachment, otherwise files ≤4096 bytes are treated as a plain message body):

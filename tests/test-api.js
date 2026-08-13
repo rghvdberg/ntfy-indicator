@@ -3,13 +3,14 @@ import Soup from 'gi://Soup';
 import { NtfyApi } from '../api.js';
 import { assert, waitFor, sleepMs, runMain } from './helpers.js';
 
-const BASE = 'https://server.cup.cake:12707';
+const BASE = (GLib.getenv('NTFY_TEST_SERVER') || '').replace(/\/$/, '');
+const SELF_SIGNED = ['1', 'true', 'yes'].includes((GLib.getenv('NTFY_TEST_SELF_SIGNED') || '').toLowerCase());
 const TOPIC = `ext-test-${Date.now()}`;
 const session = new Soup.Session();
 
 function makeMsg(method, path, headers = {}, body = null) {
   const msg = Soup.Message.new(method, `${BASE}${path}`);
-  msg.connect('accept-certificate', () => true);
+  if (SELF_SIGNED) msg.connect('accept-certificate', () => true);
   for (const [k, v] of Object.entries(headers)) msg.request_headers.append(k, v);
   if (body !== null)
     msg.set_request_body_from_bytes('text/plain', new GLib.Bytes(new TextEncoder().encode(body)));
@@ -38,11 +39,15 @@ async function fetchId(message) {
 }
 
 function subscribe(events) {
-  const api = new NtfyApi(BASE, null, true);
+  const api = new NtfyApi(BASE, null, SELF_SIGNED);
   return api.subscribe(TOPIC, e => events.push(e), e => events.push({ event: '__error', err: String(e) }));
 }
 
 async function main() {
+  if (!BASE) {
+    print('SKIP: set NTFY_TEST_SERVER to run api tests');
+    return;
+  }
   // 1. fresh subscribe: full backlog arrives via since=all
   await publish('A');
   await publish('B');

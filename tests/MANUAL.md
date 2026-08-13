@@ -1,7 +1,10 @@
 # Manual test checklist (L3 — needs human eyes on the VM)
 
+Setup: `tests/vm-create.sh` (throwaway VM), then `tests/deploy-vm.sh` to
+install the current zip. Open the console with virt-manager.
+
 Run after `tests/run.sh` and `tests/test-integration.sh` pass. Each item maps to
-a past regression; ~10 minutes on the ntfy-dev VM.
+a past regression; ~10 minutes on the test VM.
 
 ## Panel indicator
 - [ ] Icon visible in panel; count label shows summed unread across topics
