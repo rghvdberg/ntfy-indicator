@@ -68,7 +68,9 @@ incremental resume, and never re-notifying a message that has already been seen.
   modified by the test harness.
 - **Throwaway test VM**: `tests/vm-create.sh` builds a GNOME 50 VM from the
   Ubuntu cloud image (cloud-init; auto-generates `tests/.vm-key`, gitignored);
-  `--fresh` recreates it. `tests/deploy-vm.sh` packs the zip and installs it
+  `--fresh` recreates it. Host deps: `qemu-utils virtinst
+  libvirt-daemon-system libvirt-clients cloud-image-utils openssh-client
+  curl`. `tests/deploy-vm.sh` packs the zip and installs it
   on the VM like a user would. Configuration is env-driven via
   `tests/config.sh`: `NTFY_TEST_SERVER` (required for api/integration),
   `NTFY_TEST_SELF_SIGNED`, `NTFY_TEST_VM`, `NTFY_TEST_VM_IP`,

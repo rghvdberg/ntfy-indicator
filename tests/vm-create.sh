@@ -4,7 +4,6 @@
 #
 # Host deps: sudo apt install qemu-utils virtinst libvirt-daemon-system \
 #              libvirt-clients cloud-image-utils openssh-client curl
-#
 # Usage: tests/vm-create.sh [--fresh]   (--fresh destroys and recreates)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -28,16 +27,12 @@ case "${1:-}" in
 esac
 
 missing=()
-for c in qemu-img virt-install virsh ssh-keygen; do
+for c in qemu-img virt-install virsh ssh-keygen cloud-localds; do
   command -v "$c" >/dev/null || missing+=("$c")
 done
-if ! command -v cloud-localds >/dev/null && ! command -v genisoimage >/dev/null; then
-  missing+=("cloud-localds or genisoimage")
-fi
 if [ ${#missing[@]} -gt 0 ]; then
   echo "missing tools: ${missing[*]}"
   echo "install: sudo apt install qemu-utils virtinst libvirt-daemon-system libvirt-clients cloud-image-utils openssh-client"
-  echo "(genisoimage works instead of cloud-image-utils)"
   exit 1
 fi
 virsh net-info default >/dev/null 2>&1 || { echo "libvirt 'default' network not available"; exit 1; }
@@ -110,11 +105,7 @@ cat > "$SEED/meta-data" <<EOF
 instance-id: ${NTFY_TEST_VM}-$(date +%s)
 local-hostname: $NTFY_TEST_VM
 EOF
-if command -v cloud-localds >/dev/null; then
-  cloud-localds "$SEED/seed.iso" "$SEED/user-data" "$SEED/meta-data"
-else
-  genisoimage -output "$SEED/seed.iso" -volid cidata -joliet -rock "$SEED/user-data" "$SEED/meta-data" 2>/dev/null
-fi
+cloud-localds "$SEED/seed.iso" "$SEED/user-data" "$SEED/meta-data"
 
 virsh vol-create-as "$POOL" "$SEED_VOL" 1M --format raw >/dev/null
 virsh vol-upload "$SEED_VOL" "$SEED/seed.iso" "$POOL" >/dev/null
