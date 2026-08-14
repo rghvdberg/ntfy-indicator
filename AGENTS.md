@@ -126,3 +126,21 @@ incremental resume, and never re-notifying a message that has already been seen.
   scroll-restore in the delete handler races GTK's async relayout of the
   ListBox. Deferred: rewrite the message list with `GtkListView` + `GListModel`
   (the GTK 4 recommended approach for mutable lists) in a future release.
+- **Topic-switch scroll not preserved** (`history-dialog.js`): switching between
+  topics resets the list to the top instead of restoring each topic's own scroll
+  position. Root cause: `_lastTopId` is a global (not per-topic), so every
+  cross-topic load is mis-detected as "new message at top" and forces scroll-to-0;
+  plus scroll memory is shared across topics. Fix: per-topic `_lastTopId` and
+  `_scrollByTopic` maps; restore each topic's saved scroll on switch-back.
+- **Muted topics have no visible indicator** (UI): after muting a topic in the
+  dialog, there is no persistent visual cue that the topic is muted. The web app
+  shows a `NotificationsOff` icon (bell-with-slash) next to each muted topic in
+  the nav sidebar, plus "Muted" tooltip. Our extension only shows the mute state
+  as the "Mute"/"Unmute" label of the currently open topic. Fix:
+  - Panel menu (`indicator.js`): append a `notification-disabled-symbolic` icon
+    for muted topics; add `muted-topics` to settings-changed handler to refresh.
+  - Dialog sidebar (`history-dialog.js`): pass the full `muted-topics` JSON to
+    the dialog; show a `notification-disabled-symbolic` icon per muted topic row;
+    fix the header "Mute"/"Unmute" label to track the selected topic (not just
+    the initial topic). Mute semantics: messages are still stored + counted while
+    muted (web app behavior); only the desktop banner is suppressed.
