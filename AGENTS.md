@@ -100,12 +100,12 @@ incremental resume, and never re-notifying a message that has already been seen.
 - Lint the **packed zip**, not the loose sources — the zip is what the GitHub
   push produces. Reproduce it locally with the same packaging and re-run the
   workflow's content check:
-  1. Pack with the same `extra-source` list as
+  1. Pack with `gnome-extensions pack` using the same `extra-source` list as
      `.github/workflows/build-extension.yml` (api.js, attachment-downloader.js,
      history-dialog.js, indicator.js, notification-store.js,
-     subscription-manager.js, utils.js, LICENSE, icons). Keep the two lists in
-     sync whenever files are added or removed. Delete the old zip first —
-     `zip` in-place update corrupts CRC entries.
+     subscription-manager.js, utils.js, LICENSE, icons). The native pack
+     auto-includes metadata.json, extension.js, prefs.js, stylesheet.css, and
+     auto-detects schemas/ — no hand-rolled zip needed.
   2. Run the workflow's "Verify zip contains all required files" checks
      (every required file present, nothing extra at the zip root).
   3. `venv/bin/shexli build/ntfy-indicator@rghvdberg.shell-extension.zip`

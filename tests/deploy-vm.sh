@@ -8,7 +8,6 @@ source tests/config.sh
 
 EXT_ID="ntfy-indicator@rghvdberg"
 ZIP="build/$EXT_ID.shell-extension.zip"
-FILES="metadata.json extension.js prefs.js stylesheet.css api.js attachment-downloader.js history-dialog.js indicator.js notification-store.js subscription-manager.js utils.js LICENSE schemas icons"
 
 IP=$(vm_ip)
 [ -n "$IP" ] || { echo "no IP for VM '$NTFY_TEST_VM' (is it running?)"; exit 1; }
@@ -17,7 +16,11 @@ TARGET="$NTFY_TEST_VM_USER@$IP"
 echo "=> pack zip"
 mkdir -p build
 rm -f "$ZIP"
-zip -r "$ZIP" $FILES -x '*gschemas.compiled' >/dev/null
+gnome-extensions pack -f -o build \
+  --extra-source=api.js --extra-source=attachment-downloader.js \
+  --extra-source=history-dialog.js --extra-source=indicator.js \
+  --extra-source=notification-store.js --extra-source=subscription-manager.js \
+  --extra-source=utils.js --extra-source=LICENSE --extra-source=icons . >/dev/null
 
 echo "=> install on $TARGET"
 scp "${SSH_OPTS[@]}" "$ZIP" "$TARGET:/tmp/ntfy-ext.zip"

@@ -23,7 +23,7 @@ a past regression; ~10 minutes on the test VM.
 
 ## History dialog
 - [ ] Opens from menu topic click; topics sidebar shows unread counts
-- [ ] Image previews render at sensible size for every file in test-images/
+- [ ] Image previews render at sensible size for every file in tests/fixtures/
       (img01..img07: wide, tall, square, 4K, webp — the 16-commit sizing saga,
       regressions 82642c8 / aef3f35 and friends)
 - [ ] Placeholder replaced by actual image after download (regression b19e47f)

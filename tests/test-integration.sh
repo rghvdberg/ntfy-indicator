@@ -56,7 +56,7 @@ sleep 3
 echo "=== publish + store ==="
 ID1=$(pub "plain text" "text")
 ID2=$(pub "to be deleted" "delete-me")
-ID3=$(curl -sk -T test-images/img01.png -H "Filename: img01.png" -H "Title: image" -H "Message: pic" "$URL" | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+ID3=$(curl -sk -T tests/fixtures/img01.png -H "Filename: img01.png" -H "Title: image" -H "Message: pic" "$URL" | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
 sleep 5
 ok "$(q rows)" 3 "three rows stored"
 ok "$(q unread)" 3 "unread 3"
