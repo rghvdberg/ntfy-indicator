@@ -808,9 +808,10 @@ app.connect('activate', () => {
     }
 
     // === Load messages from local store ===
-    let _lastTopId = null; // newest id from last load; scroll to top when it changes
     let _loadedTopic = null; // topic whose rows are currently in the listbox
     const _rowById = new Map(); // id -> ListBoxRow of the current list
+    const _lastTopIdByTopic = new Map(); // topic → newest id from last load
+    const _scrollByTopic = new Map(); // topic → scroll position
     function _clearRows() {
         _rowById.clear();
         let child = msgListBox.get_first_child();
@@ -824,7 +825,6 @@ app.connect('activate', () => {
         const storePath = _storePath(t);
         const isCurrentTopic = t === currentTopic;
         const adj = scrolled.get_vadjustment();
-        const prevValue = adj.get_value();
 
         _readFileContents(storePath, (contents) => {
             try {
@@ -845,12 +845,13 @@ app.connect('activate', () => {
                 // re-creates the listbox scroll state even if content is identical).
                 if (curIds.length > 0 && curIds.length === freshIds.length &&
                     curIds.every((id, i) => id === freshIds[i])) {
-                    _lastTopId = topId;
+                    _lastTopIdByTopic.set(t, topId);
                     return;
                 }
-                const newTop = isCurrentTopic && _lastTopId !== null && topId !== null &&
-                    topId !== _lastTopId;
-                _lastTopId = topId;
+                const lastTopIdForThisTopic = _lastTopIdByTopic.get(t) || null;
+                const newTop = isCurrentTopic && lastTopIdForThisTopic !== null && topId !== null &&
+                    topId !== lastTopIdForThisTopic;
+                _lastTopIdByTopic.set(t, topId);
                 debugLog(`[history] Loaded ${notifications.length} messages from ${t}`);
                 // Clear + repopulate in one main-loop turn so the empty state never
                 // gets a layout pass (which would clamp the scroll to top).
@@ -861,8 +862,11 @@ app.connect('activate', () => {
                 }
                 if (newTop) {
                     adj.set_value(0);
-                } else if (prevValue > 0) {
-                    adj.set_value(prevValue);
+                    debugLog(`[history] New messages at top for ${t}, scrolled to 0`);
+                } else {
+                    const savedScroll = _scrollByTopic.get(t) || 0;
+                    adj.set_value(savedScroll);
+                    debugLog(`[history] Restored scroll for ${t} to ${savedScroll}`);
                 }
                 debugLog(`[history] Added ${notifications.length} rows to listbox`);
             } catch (e) {
@@ -870,6 +874,11 @@ app.connect('activate', () => {
             }
         });
     }
+
+    // Keep scroll positions updated as user scrolls
+    scrolled.get_vadjustment().connect('changed', () => {
+        _scrollByTopic.set(currentTopic, scrolled.get_vadjustment().get_value());
+    });
 
     // === Update topic count in sidebar ===
     function _setTopicCount(t, unread) {
@@ -880,6 +889,12 @@ app.connect('activate', () => {
     // === Topic switching ===
     function _switchTopic(t) {
         if (t === currentTopic) return;
+        
+        // Save current topic's scroll position before switching
+        const currentScroll = scrolled.get_vadjustment().get_value();
+        _scrollByTopic.set(currentTopic, currentScroll);
+        debugLog(`[history] Saved scroll for ${currentTopic} to ${currentScroll}`);
+        
         currentTopic = t;
         // Update UI
         topicLabel.set_text(t);
