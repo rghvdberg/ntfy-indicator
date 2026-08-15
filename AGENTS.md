@@ -126,12 +126,6 @@ incremental resume, and never re-notifying a message that has already been seen.
   scroll-restore in the delete handler races GTK's async relayout of the
   ListBox. Deferred: rewrite the message list with `GtkListView` + `GListModel`
   (the GTK 4 recommended approach for mutable lists) in a future release.
-- **Topic-switch scroll not preserved** (`history-dialog.js`): switching between
-  topics resets the list to the top instead of restoring each topic's own scroll
-  position. Root cause: `_lastTopId` is a global (not per-topic), so every
-  cross-topic load is mis-detected as "new message at top" and forces scroll-to-0;
-  plus scroll memory is shared across topics. Fix: per-topic `_lastTopId` and
-  `_scrollByTopic` maps; restore each topic's saved scroll on switch-back.
 - **Muted topics have no visible indicator** (UI): after muting a topic in the
   dialog, there is no persistent visual cue that the topic is muted. The web app
   shows a `NotificationsOff` icon (bell-with-slash) next to each muted topic in
