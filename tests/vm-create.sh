@@ -75,17 +75,21 @@ virsh vol-create-as "$POOL" "$DISK_VOL" 10G --format qcow2 \
 
 SEED=$(mktemp -d)
 trap 'rm -rf "$SEED"' EXIT
-cat > "$SEED/user-data" <<EOF
+cat > "$SEED/user-data" <<'EOF'
 #cloud-config
-hostname: $NTFY_TEST_VM
+hostname: ntfy-test
 users:
-  - name: $NTFY_TEST_VM_USER
+  - name: tester
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     lock_passwd: false
-    password: tester
+    password: $6$test$LEclsKMUStV9hgychI.t41koQGNl8Olce3CjMuGQAN7fQg/Sg8njpMrqpXSY5MeYBTBZc6LuTN6vBke1mq1Ig1
     ssh_authorized_keys:
+EOF
+cat >> "$SEED/user-data" <<EOF
       - $(cat "$KEY.pub")
+EOF
+cat >> "$SEED/user-data" <<'EOF'
 package_update: true
 packages:
   - gdm3
@@ -97,7 +101,7 @@ packages:
   - curl
   - python3
 runcmd:
-  - printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=$NTFY_TEST_VM_USER\n' > /etc/gdm3/custom.conf
+  - printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=tester\n' > /etc/gdm3/custom.conf
 power_state:
   mode: reboot
   delay: now
