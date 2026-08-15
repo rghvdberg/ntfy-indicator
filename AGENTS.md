@@ -138,3 +138,8 @@ incremental resume, and never re-notifying a message that has already been seen.
     fix the header "Mute"/"Unmute" label to track the selected topic (not just
     the initial topic). Mute semantics: messages are still stored + counted while
     muted (web app behavior); only the desktop banner is suppressed.
+
+## CI Notes
+- **Node.js 20 deprecation**: Actions `checkout@v4`, `upload-artifact@v4`, and
+  `action-gh-release@v2` show Node.js 20 deprecation warnings. Workflows complete
+  successfully (GitHub forces Node.js 24). Update action versions when convenient.
