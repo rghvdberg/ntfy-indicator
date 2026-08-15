@@ -83,7 +83,6 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     lock_passwd: false
-    password: $6$test$LEclsKMUStV9hgychI.t41koQGNl8Olce3CjMuGQAN7fQg/Sg8njpMrqpXSY5MeYBTBZc6LuTN6vBke1mq1Ig1
     ssh_authorized_keys:
 EOF
 cat >> "$SEED/user-data" <<EOF
@@ -101,6 +100,7 @@ packages:
   - curl
   - python3
 runcmd:
+  - echo 'tester:tester' | chpasswd
   - printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=tester\n' > /etc/gdm3/custom.conf
 power_state:
   mode: reboot
