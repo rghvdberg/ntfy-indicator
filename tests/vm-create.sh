@@ -82,7 +82,8 @@ users:
   - name: $NTFY_TEST_VM_USER
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
-    lock_passwd: true
+    lock_passwd: false
+    password: tester
     ssh_authorized_keys:
       - $(cat "$KEY.pub")
 package_update: true
