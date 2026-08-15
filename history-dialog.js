@@ -852,7 +852,7 @@ app.connect('activate', () => {
                 const newTop = isCurrentTopic && lastTopIdForThisTopic !== null && topId !== null &&
                     topId !== lastTopIdForThisTopic;
                 _lastTopIdByTopic.set(t, topId);
-                debugLog(`[history] Loaded ${notifications.length} messages from ${t}`);
+                
                 // Clear + repopulate in one main-loop turn so the empty state never
                 // gets a layout pass (which would clamp the scroll to top).
                 _clearRows();
@@ -862,11 +862,22 @@ app.connect('activate', () => {
                 }
                 if (newTop) {
                     adj.set_value(0);
-                    debugLog(`[history] New messages at top for ${t}, scrolled to 0`);
                 } else {
                     const savedScroll = _scrollByTopic.get(t) || 0;
-                    adj.set_value(savedScroll);
-                    debugLog(`[history] Restored scroll for ${t} to ${savedScroll}`);
+                    // Defer scroll restoration with retry to let GTK finish layout.
+                    // The adjustment's upper value may not be updated yet.
+                    let attempts = 0;
+                    const maxAttempts = 5;
+                    const tryRestore = () => {
+                        attempts++;
+                        if (savedScroll < adj.get_upper() || attempts >= maxAttempts) {
+                            adj.set_value(savedScroll);
+                            return GLib.SOURCE_REMOVE;
+                        } else {
+                            return GLib.SOURCE_CONTINUE;
+                        }
+                    };
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, tryRestore);
                 }
                 debugLog(`[history] Added ${notifications.length} rows to listbox`);
             } catch (e) {
@@ -893,7 +904,6 @@ app.connect('activate', () => {
         // Save current topic's scroll position before switching
         const currentScroll = scrolled.get_vadjustment().get_value();
         _scrollByTopic.set(currentTopic, currentScroll);
-        debugLog(`[history] Saved scroll for ${currentTopic} to ${currentScroll}`);
         
         currentTopic = t;
         // Update UI
