@@ -115,7 +115,9 @@ incremental resume, and never re-notifying a message that has already been seen.
   the same session does not re-import code, and a freshly zip-installed
   extension may not appear in `gnome-extensions list` until the session
   restarts. After any install/wipe on the VM, restart the session
-  (`sudo systemctl restart gdm`) before judging behavior. Related: the store
+  (`sudo systemctl restart gdm`) before judging behavior.
+- **Installation**: `gnome-extensions install` automatically handles schema
+  compilation — no manual `glib-compile-schemas` needed. Related: the store
   dir is self-healed in `_persist`, but mid-session deletion of
   `~/.local/share/ntfy` is not a supported scenario.
 

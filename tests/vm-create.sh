@@ -99,9 +99,11 @@ packages:
   - libgtk-4-bin
   - curl
   - python3
+  - eog
 runcmd:
   - echo 'tester:tester' | chpasswd
   - printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=tester\n' > /etc/gdm3/custom.conf
+  - DEBIAN_FRONTEND=noninteractive apt upgrade -y
 power_state:
   mode: reboot
   delay: now
