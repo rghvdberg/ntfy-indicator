@@ -750,8 +750,8 @@ app.connect('activate', () => {
 
             const gesture = Gtk.GestureClick.new();
             gesture.set_button(1); // Left click only
-            gesture.connect('released', (_gesture, _n_press, _x, _y) => {
-                // released fires once per click sequence, so both single and double-click open once
+            gesture.connect('released', (_gesture, n_press, _x, _y) => {
+                if (n_press > 1) return;
                 try {
                     const tempDir = GLib.get_tmp_dir();
                     const ext = cachePath.match(/\.([^.]+)$/)?.[1] || 'png';
