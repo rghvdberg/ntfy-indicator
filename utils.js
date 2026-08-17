@@ -17,12 +17,9 @@
 
 import GLib from 'gi://GLib';
 
-export function isDebug() {
-  return GLib.getenv('NTFY_DEBUG') !== null && GLib.getenv('NTFY_DEBUG') !== '0';
-}
-
 export function debugLog(...args) {
-  if (isDebug())
+  const debug = GLib.getenv('NTFY_DEBUG');
+  if (debug !== null && debug !== '0')
     console.debug('[ntfy]', ...args);
 }
 
