@@ -121,6 +121,26 @@ incremental resume, and never re-notifying a message that has already been seen.
   dir is self-healed in `_persist`, but mid-session deletion of
   `~/.local/share/ntfy` is not a supported scenario.
 
+## EGO Review Compliance
+
+This extension targets submission to extensions.gnome.org (EGO). All generated
+code must adhere to the guidelines in [DEVELOPING.md](DEVELOPING.md).
+
+Key requirements for AI-generated code:
+- **No unnecessary try-catch** wrappers around `destroy()`, `connect()`,
+  `disconnect()`, `GLib.Source.remove()`
+- **No `_destroyed` or `_enabled` boolean flags** - null out references instead
+- **Timeout cleanup next to creation** - remove existing source BEFORE creating
+  new one, same location
+- **enable()/disable() adjacent** in class definition
+- **Modular code** - split into single-responsibility files
+- **Process isolation** - no GTK in shell, no Clutter/St in prefs
+- **Line length ≤200** characters
+- **Self-explanatory code** - clear names, minimal comments
+- **Remove "Generated with AI" comments** before EGO submission
+
+See [DEVELOPING.md](DEVELOPING.md) for the complete checklist.
+
 ## Known issues / deferred
 - **History dialog scroll glitch on delete** (`history-dialog.js`): deleting a
   message makes the list briefly jump to the top then back to the current
