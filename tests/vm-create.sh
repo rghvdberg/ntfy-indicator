@@ -100,6 +100,9 @@ packages:
   - curl
   - python3
   - eog
+  - xdg-utils
+  - epiphany-browser
+  - gnome-terminal
 runcmd:
   - echo 'tester:tester' | chpasswd
   - printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=tester\n' > /etc/gdm3/custom.conf
