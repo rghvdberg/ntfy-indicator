@@ -85,13 +85,8 @@ export class SubscriptionManager {
    * Notify connection state change
    */
   _connectionChanged(topicUrl, connected) {
-    if (this._connectionChange) {
-      try {
-        this._connectionChange(topicUrl, connected);
-      } catch (e) {
-        debugLog('Connection listener error:', e);
-      }
-    }
+    if (this._connectionChange)
+      this._connectionChange(topicUrl, connected);
   }
 
   /**
