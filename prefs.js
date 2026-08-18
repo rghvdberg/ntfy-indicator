@@ -31,6 +31,7 @@ export default class NtfyPreferences extends ExtensionPreferences {
       title: 'General',
       icon_name: 'preferences-system-symbolic'
     });
+    this._currentPage = page;
 
     page.add(this._createServerGroup());
     page.add(this._createSubscriptionGroup());
