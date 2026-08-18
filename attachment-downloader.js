@@ -54,7 +54,7 @@ export class AttachmentDownloader {
    * @param {string} apiKey - Optional API key for authentication
    * @returns {Promise<string|null>} Resolves with cache path on success, null on failure
    */
-  _downloadFile(url, cachePath) {
+  _downloadFile(url, cachePath, acceptSelfSigned, apiKey) {
     return new Promise((resolve) => {
       try {
         debugLog(`[dl] Starting download: ${url} -> ${cachePath}`);
@@ -62,7 +62,7 @@ export class AttachmentDownloader {
         const msg = Soup.Message.new('GET', url);
 
         // Handle self-signed certificates
-        if (this.acceptSelfSigned) {
+        if (acceptSelfSigned) {
           msg.connect('accept-certificate', (_msg, _cert, errors) => {
             debugLog('[dl] Accepting self-signed cert');
             return true;
@@ -70,8 +70,8 @@ export class AttachmentDownloader {
         }
 
         // Add API key if provided
-        if (this.apiKey) {
-          msg.request_headers.append('Authorization', `Bearer ${this.apiKey}`);
+        if (apiKey) {
+          msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
         }
 
         // Use synchronous download
@@ -118,7 +118,7 @@ export class AttachmentDownloader {
    * @param {string} notificationId - Notification ID
    * @returns {Promise<string|null>} Resolves with cache path on success, null on failure
    */
-  async downloadAttachment(attachment, notificationId) {
+  async downloadAttachment(attachment, notificationId, acceptSelfSigned = this.acceptSelfSigned, apiKey = this.apiKey) {
     debugLog(`[dl] downloadAttachment called with: ${JSON.stringify(attachment)}`);
     if (!attachment || !attachment.url) {
       debugLog(`[dl] No attachment or URL: ${!!attachment}, ${!!attachment?.url}`);
@@ -136,7 +136,7 @@ export class AttachmentDownloader {
 
     // Download and cache
     debugLog(`[dl] Downloading to: ${cachePath}`);
-    return await this._downloadFile(attachment.url, cachePath);
+    return await this._downloadFile(attachment.url, cachePath, acceptSelfSigned, apiKey);
   }
 }
 
