@@ -229,24 +229,19 @@ _showNotification(topicUrl, msg) {
         body: body,
       });
       
-      // Handle image attachments
-      // Note: GNOME Shell notifications don't display large images, only small icons.
-      // Images are shown in the history dialog where we have full GTK4 control.
-      if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('image/')) {
-        debugLog(`[ntfy] Image attachment detected: ${msg.attachment.name} (shown in history dialog)`);
-        // Download for history dialog cache
+      // Pre-cache any attachment into the shared cache so the separate GTK
+      // history dialog can display/open it without doing its own network IO
+      // (GNOME Shell banners can't show large images; the dialog can).
+      if (msg.attachment && msg.attachment.url) {
         const apiKey = getApiKey(this.settings, topicUrl.replace(/\/[^\/]+$/, ''));
         const acceptSelfSigned = this.settings.get_boolean('accept-self-signed');
-        
         attachmentDownloader.downloadAttachment(
           msg.attachment,
           msg.id,
           acceptSelfSigned,
           apiKey
         ).then(cachePath => {
-          if (cachePath) {
-            debugLog(`[ntfy] Image cached for history dialog: ${cachePath}`);
-          }
+          if (cachePath) debugLog(`[ntfy] Attachment cached for history dialog: ${cachePath}`);
         });
       }
      

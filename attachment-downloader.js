@@ -48,9 +48,9 @@ export class AttachmentDownloader {
 
   /**
    * Download any attachment to cache (no type validation).
-   * Callback-based: the history dialog is a standalone `gjs -m` app where
-   * promise continuations scheduled from the GLib loop never run, so callers
-   * inside the dialog must use `downloadAttachmentCb`, not the promise API.
+   * Callback-based: `downloadAttachment` (used by the shell, where promises
+   * do get pumped) wraps this in a Promise; the history dialog never calls it
+   * directly — it reads the shared cache via `getCachedAttachment`.
    * @param {string} url - Attachment URL
    * @param {string} cachePath - Where to save the cached file
    * @param {boolean} acceptSelfSigned - Accept self-signed certificates
@@ -116,14 +116,15 @@ export class AttachmentDownloader {
   }
 
   /**
-   * Callback API for the history dialog (no promises — see `_downloadFile`).
-   * @param {(path: string|null) => void} cb - Called with cache path or null
+   * Cache-only lookup for the history dialog. The shell pre-caches every
+   * attachment on arrival, so the dialog just reads the shared cache — no
+   * network IO (which would need callbacks, since promises don't fire in the
+   * standalone `gjs -m` dialog process). Returns the cache path or null.
    */
-  downloadAttachmentCb(attachment, notificationId, cb, acceptSelfSigned = this.acceptSelfSigned, apiKey = this.apiKey) {
+  getCachedAttachment(attachment, notificationId) {
     const cachePath = this._resolveCachePath(attachment, notificationId);
-    if (!cachePath) { cb(null); return; }
-    if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) { cb(cachePath); return; }
-    this._downloadFile(attachment.url, cachePath, acceptSelfSigned, apiKey, cb);
+    if (!cachePath) return null;
+    return GLib.file_test(cachePath, GLib.FileTest.EXISTS) ? cachePath : null;
   }
 }
 

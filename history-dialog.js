@@ -495,14 +495,14 @@ app.connect('activate', () => {
             box.append(tagsLabel);
         }
 
-        // Image preview for image attachments
+        // Image preview for image attachments. The shell pre-caches every
+        // attachment into the shared cache on arrival, so we only read it here.
         if (m.attachment && m.attachment.type && m.attachment.type.startsWith('image/')) {
-            attachmentDownloader.downloadAttachmentCb(m.attachment, m.id, (cachePath) => {
-                if (cachePath) {
-                    const picture = _createImagePicture(cachePath);
-                    if (picture) box.append(picture);
-                }
-            }, acceptSelfSigned, apiKey);
+            const cachePath = attachmentDownloader.getCachedAttachment(m.attachment, m.id);
+            if (cachePath) {
+                const picture = _createImagePicture(cachePath);
+                if (picture) box.append(picture);
+            }
         }
 
         if (m.attachment) {
@@ -520,16 +520,15 @@ app.connect('activate', () => {
                     halign: Gtk.Align.START,
                 });
                 attBtn.connect('clicked', () => {
-                    attachmentDownloader.downloadAttachmentCb(att, m.id, (newCachePath) => {
-                        if (newCachePath) {
-                            _openAttachment(newCachePath, att.name || 'attachment');
-                        } else {
-                            if (debug) console.warn('[history] Download failed, opening URL');
-                            try {
-                                Gio.AppInfo.launch_default_for_uri(attUrl, null);
-                            } catch (e) { if (debug) console.error(`[history] Open failed: ${e.message}`); }
-                        }
-                    }, acceptSelfSigned, apiKey);
+                    const cachePath = attachmentDownloader.getCachedAttachment(att, m.id);
+                    if (cachePath) {
+                        _openAttachment(cachePath, att.name || 'attachment');
+                    } else {
+                        if (debug) console.warn('[history] Not cached, opening URL');
+                        try {
+                            Gio.AppInfo.launch_default_for_uri(attUrl, null);
+                        } catch (e) { if (debug) console.error(`[history] Open failed: ${e.message}`); }
+                    }
                 });
                 box.append(attBtn);
                 // Images with a url are rendered by the preview above; no extra
