@@ -153,6 +153,7 @@ class Indicator extends PanelMenu.Button {
   destroy() {
     if (this._settingsChangedId)
       this.settings.disconnect(this._settingsChangedId);
+    notificationStore.setOnChange(null);
     subscriptionManager.setConnectionChange(null);
     subscriptionManager.unsubscribeAll();
     super.destroy();

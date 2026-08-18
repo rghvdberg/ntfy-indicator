@@ -644,7 +644,7 @@ app.connect('activate', () => {
     }
 
     // === IPC: command file (single file, topicUrl in each line) ===
-    const _cmdPath = '/tmp/ntfy-cmd.jsonl';
+    const _cmdPath = GLib.build_filenamev([GLib.get_tmp_dir(), 'ntfy-cmd.jsonl']);
 
     function _sendCommand(cmd, data) {
         try {

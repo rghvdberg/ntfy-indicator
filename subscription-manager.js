@@ -341,7 +341,7 @@ _showNotification(topicUrl, msg) {
   }
 
   _startCommandPoller() {
-    const cmdPath = '/tmp/ntfy-cmd.jsonl';
+    const cmdPath = GLib.build_filenamev([GLib.get_tmp_dir(), 'ntfy-cmd.jsonl']);
 
     // Clear old commands
     if (GLib.file_test(cmdPath, GLib.FileTest.EXISTS)) {
