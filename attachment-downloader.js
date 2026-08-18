@@ -47,48 +47,35 @@ export class AttachmentDownloader {
   }
 
   /**
-   * Download any attachment to cache (no type validation)
+   * Download any attachment to cache (no type validation).
+   * Callback-based: the history dialog is a standalone `gjs -m` app where
+   * promise continuations scheduled from the GLib loop never run, so callers
+   * inside the dialog must use `downloadAttachmentCb`, not the promise API.
    * @param {string} url - Attachment URL
    * @param {string} cachePath - Where to save the cached file
    * @param {boolean} acceptSelfSigned - Accept self-signed certificates
    * @param {string} apiKey - Optional API key for authentication
-   * @returns {Promise<string|null>} Resolves with cache path on success, null on failure
+   * @param {(path: string|null) => void} cb - Called with cache path or null
    */
-  _downloadFile(url, cachePath, acceptSelfSigned, apiKey) {
-    return new Promise((resolve) => {
-      try {
-        debugLog(`[dl] Starting download: ${url} -> ${cachePath}`);
-        const session = new Soup.Session();
-        const msg = Soup.Message.new('GET', url);
+  _downloadFile(url, cachePath, acceptSelfSigned, apiKey, cb) {
+    try {
+      const session = new Soup.Session();
+      const msg = Soup.Message.new('GET', url);
 
-        // Handle self-signed certificates
-        if (acceptSelfSigned) {
-          msg.connect('accept-certificate', (_msg, _cert, errors) => {
-            debugLog('[dl] Accepting self-signed cert');
-            return true;
-          });
-        }
+      if (acceptSelfSigned) {
+        msg.connect('accept-certificate', () => true);
+      }
+      if (apiKey) {
+        msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
+      }
 
-        // Add API key if provided
-        if (apiKey) {
-          msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
-        }
-
-        // Use synchronous download
+      session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
         try {
-          const bytes = session.send_and_read(msg, null);
+          const bytes = sess.send_and_read_finish(result);
           const data = bytes.get_data();
           const size = data.length;
-          debugLog(`[dl] Downloaded ${size} bytes`);
-      
-          // Check size limit
-          if (size > 5 * 1024 * 1024) {
-            debugLog(`[dl] File too large: ${size}`);
-            resolve(null);
-            return;
-          }
+          if (size > 5 * 1024 * 1024) { cb(null); return; }
 
-          // Write to cache
           const file = Gio.File.new_for_path(cachePath);
           const ostream = file.replace(
             null,
@@ -98,45 +85,45 @@ export class AttachmentDownloader {
           );
           ostream.write_all(data, null);
           ostream.close(null);
-
-          debugLog(`[dl] Cached: ${cachePath}`);
-          resolve(cachePath);
+          cb(cachePath);
         } catch (e) {
           debugLog(`[dl] Download error: ${e.message}`);
-          resolve(null);
+          cb(null);
         }
-      } catch (e) {
-        debugLog(`[dl] Init error: ${e.message}`);
-        resolve(null);
-      }
+      });
+    } catch (e) {
+      debugLog(`[dl] Init error: ${e.message}`);
+      cb(null);
+    }
+  }
+
+  _resolveCachePath(attachment, notificationId) {
+    if (!attachment || !attachment.url) return null;
+    return this._cachePath(notificationId, attachment.name || 'attachment');
+  }
+
+  /**
+   * Promise API for the shell extension, where promises do get pumped.
+   * @returns {Promise<string|null>} Cache path on success, null on failure
+   */
+  async downloadAttachment(attachment, notificationId, acceptSelfSigned = this.acceptSelfSigned, apiKey = this.apiKey) {
+    const cachePath = this._resolveCachePath(attachment, notificationId);
+    if (!cachePath) return null;
+    if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) return cachePath;
+    return new Promise((resolve) => {
+      this._downloadFile(attachment.url, cachePath, acceptSelfSigned, apiKey, resolve);
     });
   }
 
   /**
-   * Download and cache any attachment, returning the cache path
-   * @param {object} attachment - Attachment object from ntfy
-   * @param {string} notificationId - Notification ID
-   * @returns {Promise<string|null>} Resolves with cache path on success, null on failure
+   * Callback API for the history dialog (no promises — see `_downloadFile`).
+   * @param {(path: string|null) => void} cb - Called with cache path or null
    */
-  async downloadAttachment(attachment, notificationId, acceptSelfSigned = this.acceptSelfSigned, apiKey = this.apiKey) {
-    debugLog(`[dl] downloadAttachment called with: ${JSON.stringify(attachment)}`);
-    if (!attachment || !attachment.url) {
-      debugLog(`[dl] No attachment or URL: ${!!attachment}, ${!!attachment?.url}`);
-      return null;
-    }
-
-    debugLog(`[dl] downloadAttachment: ${attachment.name}, type: ${attachment.type}`);
-
-    // Check if already cached
-    const cachePath = this._cachePath(notificationId, attachment.name || 'attachment');
-    if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) {
-      debugLog(`[dl] Already cached: ${cachePath}`);
-      return cachePath;
-    }
-
-    // Download and cache
-    debugLog(`[dl] Downloading to: ${cachePath}`);
-    return await this._downloadFile(attachment.url, cachePath, acceptSelfSigned, apiKey);
+  downloadAttachmentCb(attachment, notificationId, cb, acceptSelfSigned = this.acceptSelfSigned, apiKey = this.apiKey) {
+    const cachePath = this._resolveCachePath(attachment, notificationId);
+    if (!cachePath) { cb(null); return; }
+    if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) { cb(cachePath); return; }
+    this._downloadFile(attachment.url, cachePath, acceptSelfSigned, apiKey, cb);
   }
 }
 

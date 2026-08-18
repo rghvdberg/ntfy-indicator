@@ -497,12 +497,12 @@ app.connect('activate', () => {
 
         // Image preview for image attachments
         if (m.attachment && m.attachment.type && m.attachment.type.startsWith('image/')) {
-            attachmentDownloader.downloadAttachment(m.attachment, m.id, acceptSelfSigned, apiKey).then((cachePath) => {
+            attachmentDownloader.downloadAttachmentCb(m.attachment, m.id, (cachePath) => {
                 if (cachePath) {
                     const picture = _createImagePicture(cachePath);
                     if (picture) box.append(picture);
                 }
-            });
+            }, acceptSelfSigned, apiKey);
         }
 
         if (m.attachment) {
@@ -520,7 +520,7 @@ app.connect('activate', () => {
                     halign: Gtk.Align.START,
                 });
                 attBtn.connect('clicked', () => {
-                    attachmentDownloader.downloadAttachment(att, m.id, acceptSelfSigned, apiKey).then((newCachePath) => {
+                    attachmentDownloader.downloadAttachmentCb(att, m.id, (newCachePath) => {
                         if (newCachePath) {
                             _openAttachment(newCachePath, att.name || 'attachment');
                         } else {
@@ -529,7 +529,7 @@ app.connect('activate', () => {
                                 Gio.AppInfo.launch_default_for_uri(attUrl, null);
                             } catch (e) { if (debug) console.error(`[history] Open failed: ${e.message}`); }
                         }
-                    });
+                    }, acceptSelfSigned, apiKey);
                 });
                 box.append(attBtn);
                 // Images with a url are rendered by the preview above; no extra
