@@ -21,10 +21,10 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-import { isDebug, debugLog, parseTopicUrl, getDataDir, getNotificationFile, getCacheDir } from './utils.js';
+import { debugLog, parseTopicUrl, getDataDir, getNotificationFile, getCacheDir } from './utils.js';
 
 // Guard name `debug` is what shexli recognizes for gated console.* calls
-const debug = isDebug();
+const debug = GLib.getenv('NTFY_DEBUG') !== null && GLib.getenv('NTFY_DEBUG') !== '0';
 
 // Loaded lazily so importing this module from the shell stays GTK-free
 let Gtk = null;
@@ -157,12 +157,14 @@ for (const p of _parsed) topicUrlMap[p.topic] = p.topicUrl;
 const extDir = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'share', 'gnome-shell', 'extensions', 'ntfy-indicator@rghvdberg']);
 function _storePath(t) { return getNotificationFile(topicUrlMap[t]); }
 
-const PRIORITY_LABELS = {
-    1: { text: '\u25B2\u25B2', color: '#999' },
-    2: { text: '\u25B2', color: '#999' },
-    4: { text: '\u25BC', color: '#c60000' },
-    5: { text: '\u25BC\u25BC', color: '#a00' },
-};
+const PRIORITY_LABELS = [
+    null,  // 0-index unused
+    { text: '▲▲', color: '#999' },
+    { text: '▲', color: '#999' },
+    null,  // 3 unused
+    { text: '▼', color: '#c60000' },
+    { text: '▼▼', color: '#a00' },
+];
 
 const app = new Adw.Application({
     application_id: 'com.ntfy.HistoryDialog',

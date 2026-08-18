@@ -23,13 +23,6 @@ import GLib from 'gi://GLib';
 
 import { debugLog, getCacheDir } from './utils.js';
 
-
-// Maximum image size to download (5MB)
-// Rationale: Most notification images (screenshots, camera snapshots, memes)
-// are under 1MB. 5MB provides headroom for high-quality images while
-// preventing excessive storage/bandwidth usage. Can be increased if needed.
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-
 export class AttachmentDownloader {
   constructor(acceptSelfSigned = false, apiKey = null) {
     this.cacheDir = getCacheDir();
@@ -89,7 +82,7 @@ export class AttachmentDownloader {
           debugLog(`[dl] Downloaded ${size} bytes`);
       
           // Check size limit
-          if (size > MAX_IMAGE_SIZE) {
+          if (size > 5 * 1024 * 1024) {
             debugLog(`[dl] File too large: ${size}`);
             resolve(null);
             return;

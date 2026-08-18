@@ -25,21 +25,6 @@ import { notificationStore } from './notification-store.js';
 import { attachmentDownloader } from './attachment-downloader.js';
 import { getApiKey, parseTopicUrl, debugLog } from './utils.js';
 
-// Polyfill URL for GNOME 50 MessageTray which references it internally
-if (typeof URL === 'undefined') {
-  globalThis.URL = class URL {
-    constructor(url) {
-      this.href = url;
-      // Simple parser for common URLs
-      const match = url.match(/^(https?:\/\/[^/]+)(\/[^\?]*)?(\?.*)?$/);
-      this.origin = match ? match[1] : '';
-      this.pathname = match && match[2] ? match[2] : '/';
-      this.search = match && match[3] ? match[3] : '';
-      this.hash = '';
-    }
-  };
-}
-
 /**
  * Open a URL in the default browser without shell interpolation
  * (user/publisher-controlled input must never reach a shell string).
@@ -85,13 +70,8 @@ export class SubscriptionManager {
    * Notify connection state change
    */
   _connectionChanged(topicUrl, connected) {
-    if (this._connectionChange) {
-      try {
-        this._connectionChange(topicUrl, connected);
-      } catch (e) {
-        debugLog('Connection listener error:', e);
-      }
-    }
+    if (this._connectionChange)
+      this._connectionChange(topicUrl, connected);
   }
 
   /**

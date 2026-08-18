@@ -32,8 +32,6 @@ export default class NtfyPreferences extends ExtensionPreferences {
       icon_name: 'preferences-system-symbolic'
     });
 
-    this._currentPage = page;
-
     page.add(this._createServerGroup());
     page.add(this._createSubscriptionGroup());
     page.add(this._createNotificationGroup());
@@ -42,7 +40,6 @@ export default class NtfyPreferences extends ExtensionPreferences {
 
     window.connect('close-request', () => {
       this.settings = null;
-      this._currentPage = null;
       return false;
     });
   }

@@ -30,7 +30,7 @@ export class NotificationStore {
     this.cacheDir = getCacheDir();
     this._ensureDataDir();
     this._onChange = null;
-    this._locks = {};
+    this._pendingWrites = {};
   }
 
   setOnChange(cb) {
@@ -42,10 +42,11 @@ export class NotificationStore {
   }
 
   _enqueue(topicUrl, work) {
-    const prev = this._locks[topicUrl] || Promise.resolve();
-    const next = prev.then(work, work);
-    this._locks[topicUrl] = next.catch(() => {});
-    return next;
+    // Serialize writes per topic to prevent data loss from concurrent operations
+    const prev = this._pendingWrites[topicUrl];
+    const promise = (prev || Promise.resolve()).then(work, work).catch(() => {});
+    this._pendingWrites[topicUrl] = promise;
+    return promise;
   }
 
   _ensureDataDir() {

@@ -38,7 +38,6 @@ class Indicator extends PanelMenu.Button {
     this._extension = extension;
     this._menuGen = 0;
     this._buttonGen = 0;
-    this._destroyed = false;
 
     const box = new St.BoxLayout({ style: 'spacing: 4px;' });
 
@@ -75,12 +74,12 @@ class Indicator extends PanelMenu.Button {
     } else {
       const rows = [];
       for (const ch of channels) {
-        if (gen !== this._menuGen || this._destroyed) return;
+        if (gen !== this._menuGen) return;
         const { baseUrl, topic } = parseTopicUrl(ch);
         const server = baseUrl || defaultServer;
         const topicUrl = `${server}/${topic}`;
         const count = await notificationStore.getUnreadCount(topicUrl);
-        if (gen !== this._menuGen || this._destroyed) return;
+        if (gen !== this._menuGen) return;
         rows.push({ topic, server, count });
       }
       for (const r of rows) {
@@ -94,7 +93,7 @@ class Indicator extends PanelMenu.Button {
       }
     }
 
-    if (gen !== this._menuGen || this._destroyed) return;
+    if (gen !== this._menuGen) return;
 
     this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -139,20 +138,19 @@ class Indicator extends PanelMenu.Button {
     let total = 0;
     const defaultServer = this.settings.get_string('server');
     for (const ch of this.settings.get_strv('channels')) {
-      if (gen !== this._buttonGen || this._destroyed) return;
+      if (gen !== this._buttonGen) return;
       const { baseUrl, topic } = parseTopicUrl(ch);
       const topicUrl = `${baseUrl || defaultServer}/${topic}`;
       const count = await notificationStore.getUnreadCount(topicUrl);
       total += count;
     }
-    if (gen !== this._buttonGen || this._destroyed) return;
+    if (gen !== this._buttonGen) return;
     if (this._countLabel) {
     this._countLabel.set_text(total > 0 ? `(${total})` : '');
   }
   }
 
   destroy() {
-    this._destroyed = true;
     if (this._settingsChangedId)
       this.settings.disconnect(this._settingsChangedId);
     subscriptionManager.setConnectionChange(null);
