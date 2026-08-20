@@ -22,6 +22,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import { debugLog, parseTopicUrl, getDataDir, getNotificationFile, getCacheDir } from './utils.js';
+import { attachmentDownloader } from './attachment-downloader.js';
 
 // Guard name `debug` is what shexli recognizes for gated console.* calls
 const debug = GLib.getenv('NTFY_DEBUG') !== null && GLib.getenv('NTFY_DEBUG') !== '0';
@@ -42,96 +43,7 @@ async function _loadAppLibs() {
     GdkPixbuf = (await import('gi://GdkPixbuf?version=2.0')).default;
 }
 
-// Attachment downloader for GTK4 (downloads all file types)
-class AttachmentDownloader {
-  constructor(acceptSelfSigned, apiKey) {
-    this.acceptSelfSigned = acceptSelfSigned;
-    this.apiKey = apiKey;
-    this.session = new Soup.Session();
-    
-    // Build cache dir
-    const dataDir = getCacheDir();
-    GLib.mkdir_with_parents(dataDir, 0o755);
-    this.cacheDir = dataDir;
-  }
-  
-  getCachedAttachment(notificationId, attachmentName) {
-    const cachePath = this._cachePath(notificationId, attachmentName);
-    if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) {
-      return cachePath;
-    }
-    return null;
-  }
 
-  _cachePath(notificationId, attachmentName) {
-    const safeName = `${notificationId}_${attachmentName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    return GLib.build_filenamev([this.cacheDir, safeName]);
-  }
-
-  dispose() {
-    if (this.session) this.session.abort();
-  }
-  
-downloadAttachmentFile(url, cachePath, cb) {
-    const msg = Soup.Message.new('GET', url);
-
-    if (this.acceptSelfSigned === 'true') {
-      msg.connect('accept-certificate', (_msg, _cert, errors) => {
-        return errors === Gio.TlsCertificateFlags.UNKNOWN_CA;
-      });
-    }
-
-    if (this.apiKey) {
-      msg.request_headers.append('Authorization', 'Bearer ' + this.apiKey);
-    }
-
-    this.session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
-      try {
-        const bytes = sess.send_and_read_finish(result);
-        const data = bytes.get_data();
-        const size = data.length;
-
-        if (size > 5 * 1024 * 1024) {
-          if (debug) console.warn(`[history] File too large (${size} bytes), skipping: ${url}`);
-          cb(null);
-          return;
-        }
-
-        const file = Gio.File.new_for_path(cachePath);
-        const ostream = file.replace(
-          null,
-          false,
-          Gio.FileCreateFlags.REPLACE_DESTINATION,
-          null
-        );
-        ostream.write_all(data, null);
-        ostream.close(null);
-
-        debugLog(`[history] Cached attachment: ${cachePath} (${size} bytes)`);
-        cb(cachePath);
-      } catch (e) {
-        if (debug) console.error(`[history] Failed to download/cache file: ${e.message}`);
-        cb(null);
-      }
-    });
-  }
-
-  downloadAttachment(attachment, notificationId, cb) {
-    if (!attachment || !attachment.url) {
-      cb(null);
-      return;
-    }
-
-    const cached = this.getCachedAttachment(notificationId, attachment.name || 'attachment');
-    if (cached) {
-      cb(cached);
-      return;
-    }
-
-    const cachePath = this._cachePath(notificationId, attachment.name || 'attachment');
-    this.downloadAttachmentFile(attachment.url, cachePath, cb);
-  }
-}
 
 export async function main() {
   await _loadAppLibs();
@@ -174,15 +86,6 @@ const app = new Adw.Application({
 app.connect('activate', () => {
     const session = new Soup.Session();
     let currentTopic = initialTopic;
-    let attachmentDownloader = null;
-    
-    // Initialize image downloader after we have settings
-    function initAttachmentDownloader() {
-      if (!attachmentDownloader) {
-        attachmentDownloader = new AttachmentDownloader(acceptSelfSigned, apiKey);
-      }
-      return attachmentDownloader;
-    }
 
     const window = new Adw.ApplicationWindow({
         application: app,
@@ -191,9 +94,7 @@ app.connect('activate', () => {
         default_height: 600,
     });
 
-    // Abort downloader session on close so the process can exit cleanly
     window.connect('close-request', () => {
-        if (attachmentDownloader) attachmentDownloader.dispose();
         return false;
     });
 
@@ -594,45 +495,13 @@ app.connect('activate', () => {
             box.append(tagsLabel);
         }
 
-        // Image preview for image attachments
+        // Image preview for image attachments. The shell pre-caches every
+        // attachment into the shared cache on arrival, so we only read it here.
         if (m.attachment && m.attachment.type && m.attachment.type.startsWith('image/')) {
-            const downloader = initAttachmentDownloader();
-            const cachePath = downloader.getCachedAttachment(m.id, m.attachment.name || 'image');
-            
+            const cachePath = attachmentDownloader.getCachedAttachment(m.attachment, m.id);
             if (cachePath) {
-                // Show cached image immediately
                 const picture = _createImagePicture(cachePath);
-                if (picture) {
-                    box.append(picture);
-                }
-            } else {
-                // Show loading placeholder, download async
-                const placeholder = new Gtk.Box({
-                    orientation: Gtk.Orientation.VERTICAL,
-                    css_classes: ['ntfy-image-loading'],
-                    hexpand: true,
-                    halign: Gtk.Align.FILL,
-                    height_request: 100,
-                });
-                const loadingLabel = new Gtk.Label({
-                    label: 'Loading image...',
-                    valign: Gtk.Align.CENTER,
-                    halign: Gtk.Align.CENTER,
-                    css_classes: ['caption', 'dim-label'],
-                });
-                placeholder.append(loadingLabel);
-                box.append(placeholder);
-                
-                // Download asynchronously
-                downloader.downloadAttachment(m.attachment, m.id, (cachePath) => {
-                    if (cachePath) {
-                        const picture = _createImagePicture(cachePath);
-                        if (picture) {
-                            box.remove(placeholder);
-                            box.append(picture);
-                        }
-                    }
-                });
+                if (picture) box.append(picture);
             }
         }
 
@@ -645,28 +514,20 @@ app.connect('activate', () => {
             
             if (attUrl && !isImage) {
                 // Non-image attachment: download and open with default app
-                const downloader = initAttachmentDownloader();
                 if (debug) console.warn(`[history] Non-image attachment: ${att.name}, type: ${att.type}, url: ${attUrl}`);
                 const attBtn = new Gtk.Button({
                     label: `\uD83D\uDCCE ${attText}`,
                     halign: Gtk.Align.START,
                 });
                 attBtn.connect('clicked', () => {
-                    const cached = downloader.getCachedAttachment(m.id, att.name || 'attachment');
-                    if (cached) {
-                        _openAttachment(cached, att.name || 'attachment');
+                    const cachePath = attachmentDownloader.getCachedAttachment(att, m.id);
+                    if (cachePath) {
+                        _openAttachment(cachePath, att.name || 'attachment');
                     } else {
-                        debugLog(`[history] Not cached, downloading from ${att.url}`);
-                        downloader.downloadAttachment(att, m.id, (newCachePath) => {
-                            if (newCachePath) {
-                                _openAttachment(newCachePath, att.name || 'attachment');
-                            } else {
-                                if (debug) console.warn('[history] Download failed, opening URL');
-                                try {
-                                    Gio.AppInfo.launch_default_for_uri(attUrl, null);
-                                } catch (e) { if (debug) console.error(`[history] Open failed: ${e.message}`); }
-                            }
-                        });
+                        if (debug) console.warn('[history] Not cached, opening URL');
+                        try {
+                            Gio.AppInfo.launch_default_for_uri(attUrl, null);
+                        } catch (e) { if (debug) console.error(`[history] Open failed: ${e.message}`); }
                     }
                 });
                 box.append(attBtn);
@@ -782,7 +643,7 @@ app.connect('activate', () => {
     }
 
     // === IPC: command file (single file, topicUrl in each line) ===
-    const _cmdPath = '/tmp/ntfy-cmd.jsonl';
+    const _cmdPath = GLib.build_filenamev([GLib.get_tmp_dir(), 'ntfy-cmd.jsonl']);
 
     function _sendCommand(cmd, data) {
         try {

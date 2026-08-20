@@ -195,7 +195,11 @@ export class SubscriptionManager {
     if (!added) return;
 
     // Show notification
-    this._showNotification(topicUrl, msg);
+    try {
+      this._showNotification(topicUrl, msg);
+    } catch (e) {
+      console.error(`[ntfy] _showNotification failed: ${e.message}`, e);
+    }
   }
 
 /**
@@ -203,55 +207,51 @@ export class SubscriptionManager {
     * @param {string} topicUrl - Topic URL
     * @param {object} msg - Parsed message
     */
-   _showNotification(topicUrl, msg) {
-     const title = msg.title || `ntfy: ${msg.topic}`;
-     const body = msg.message || '';
-     
-     // ponytail: Source auto-destroys when all notifications are dismissed.
-     // Recreate lazily instead of bailing out when null.
-     if (!this._source) {
-       this._source = new MessageTray.Source({
-         title: 'ntfy',
-         iconName: 'dialog-information-symbolic',
-       });
-       Main.messageTray.add(this._source);
-       this._source.connect('destroy', () => { this._source = null; });
-     }
-     
-     // Create notification
-     const notification = new MessageTray.Notification({
-       source: this._source,
-       title: title,
-       body: body,
-     });
-     
-     // Handle image attachments
-     // Note: GNOME Shell notifications don't display large images, only small icons.
-     // Images are shown in the history dialog where we have full GTK4 control.
-if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('image/')) {
-        debugLog(`[ntfy] Image attachment detected: ${msg.attachment.name} (shown in history dialog)`);
-       // Download for history dialog cache
-       const apiKey = getApiKey(this.settings, topicUrl.replace(/\/[^\/]+$/, ''));
-       const acceptSelfSigned = this.settings.get_boolean('accept-self-signed');
-       
-       attachmentDownloader.downloadAttachment(
-         msg.attachment,
-         msg.id,
-         acceptSelfSigned,
-         apiKey
-).then(cachePath => {
-          if (cachePath) {
-            debugLog(`[ntfy] Image cached for history dialog: ${cachePath}`);
-          }
+_showNotification(topicUrl, msg) {
+      const title = msg.title || `ntfy: ${msg.topic}`;
+      const body = msg.message || '';
+      
+      // ponytail: Source auto-destroys when all notifications are dismissed.
+      // Recreate lazily instead of bailing out when null.
+      if (!this._source) {
+        this._source = new MessageTray.Source({
+          title: 'ntfy',
+          iconName: 'dialog-information-symbolic',
         });
-     }
-    
-    // Determine what happens when notification is clicked
-    const { baseUrl, topic } = parseTopicUrl(topicUrl);
-    const serverUrl = baseUrl || this.settings.get_string('server');
-    
-    debugLog(`[ntfy] Creating notification: title="${title}" topicUrl=${topicUrl} msg.id=${msg.id}`);
-    notification.connect('activated', async () => {
+        Main.messageTray.add(this._source);
+        this._source.connect('destroy', () => { this._source = null; });
+      }
+      
+      // Create notification
+      const notification = new MessageTray.Notification({
+        source: this._source,
+        title: title,
+        body: body,
+      });
+      
+      // Pre-cache any attachment into the shared cache so the separate GTK
+      // history dialog can display/open it without doing its own network IO
+      // (GNOME Shell banners can't show large images; the dialog can).
+      if (msg.attachment && msg.attachment.url) {
+        const apiKey = getApiKey(this.settings, topicUrl.replace(/\/[^\/]+$/, ''));
+        const acceptSelfSigned = this.settings.get_boolean('accept-self-signed');
+        attachmentDownloader.downloadAttachment(
+          msg.attachment,
+          msg.id,
+          acceptSelfSigned,
+          apiKey
+        ).then(cachePath => {
+          if (cachePath) debugLog(`[ntfy] Attachment cached for history dialog: ${cachePath}`);
+        });
+      }
+     
+      // Determine what happens when notification is clicked
+      const { baseUrl, topic } = parseTopicUrl(topicUrl);
+      const serverUrl = baseUrl || this.settings.get_string('server');
+      
+      debugLog(`[ntfy] Creating notification: title="${title}" topicUrl=${topicUrl} msg.id=${msg.id}`);
+      
+      notification.connect('activated', async () => {
       debugLog(`[ntfy] Notification activated: topicUrl=${topicUrl} msg.id=${msg.id}`);
       const result = await notificationStore.markRead(topicUrl, msg.id);
       debugLog(`[ntfy] markRead result: ${result}`);
@@ -267,9 +267,9 @@ if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('ima
         this._openHistoryDialog(topic, serverUrl);
       }
     });
-    
-    this._source.addNotification(notification);
-  }
+      
+      this._source.addNotification(notification);
+    }
   
   /**
    * Open history dialog for a topic
@@ -336,7 +336,7 @@ if (msg.attachment && msg.attachment.type && msg.attachment.type.startsWith('ima
   }
 
   _startCommandPoller() {
-    const cmdPath = '/tmp/ntfy-cmd.jsonl';
+    const cmdPath = GLib.build_filenamev([GLib.get_tmp_dir(), 'ntfy-cmd.jsonl']);
 
     // Clear old commands
     if (GLib.file_test(cmdPath, GLib.FileTest.EXISTS)) {
