@@ -100,6 +100,20 @@ for i in $(seq 1 3); do curl -sk -d "trim $i" "$URL" >/dev/null; done
 sleep 6
 ok "$(q rows)" 10 "limit trims to 10 newest"
 
+echo "=== history limit grow (100) ==="
+gs history-limit 100
+gs channels "@as []"; sleep 2; gs channels "['$TOPIC']"; sleep 3
+for i in $(seq 1 5); do curl -sk -d "grow $i" "$URL" >/dev/null; done
+sleep 6
+ok "$(q rows)" 15 "limit 100: grows to 15 (was capped at 10)"
+
+echo "=== history limit shrink back to 10 ==="
+gs history-limit 10
+gs channels "@as []"; sleep 2; gs channels "['$TOPIC']"; sleep 3
+for i in $(seq 1 3); do curl -sk -d "shrink $i" "$URL" >/dev/null; done
+sleep 6
+ok "$(q rows)" 10 "limit 10: re-trims to 10 on next write"
+
 echo "=== lifecycle: disable/enable ==="
 ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}gnome-extensions disable ntfy-indicator@rghvdberg; sleep 1; gnome-extensions enable ntfy-indicator@rghvdberg; sleep 3; gnome-extensions info ntfy-indicator@rghvdberg | grep -E '^  State'" | grep -q "ACTIVE"
 ok $? 0 "ACTIVE after disable/enable"

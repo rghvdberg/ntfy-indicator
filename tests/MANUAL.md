@@ -42,6 +42,10 @@ a past regression; ~10 minutes on the test VM.
 - [ ] API keys JSON field (per-server Bearer)
 - [ ] Channels: add bare topic, add full URL, remove; subscriptions follow
 - [ ] History limit 10–1000 honored
+      - Set History Limit to 10, publish >10 messages (dialog or `curl`), confirm
+        panel count and history-dialog rows cap at 10 and the oldest are gone.
+      - Set it back to 100, re-subscribe (toggle the topic off/on in Channels),
+        publish more, confirm the store grows past 10.
 
 ## Lifecycle
 - [ ] Disable → enable in same session: no errors, indicator returns
