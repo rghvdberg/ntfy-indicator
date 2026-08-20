@@ -16,14 +16,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
-import { NtfyApi } from './api.js';
-import { notificationStore } from './notification-store.js';
-import { attachmentDownloader } from './attachment-downloader.js';
-import { getApiKey, parseTopicUrl, debugLog } from './utils.js';
+import Gio from "gi://Gio";
+import GLib from "gi://GLib";
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import * as MessageTray from "resource:///org/gnome/shell/ui/messageTray.js";
+import { NtfyApi } from "./api.js";
+import { notificationStore } from "./notification-store.js";
+import { attachmentDownloader } from "./attachment-downloader.js";
+import { getApiKey, parseTopicUrl, debugLog } from "./utils.js";
 
 /**
  * Open a URL in the default browser without shell interpolation
@@ -48,14 +48,16 @@ export class SubscriptionManager {
     this._connectionChange = null;
     this._historyPid = null;
     this._historyTopic = null;
-    
+
     // Create MessageTray source for notifications with click actions
     this._source = new MessageTray.Source({
-      title: 'ntfy',
-      iconName: 'dialog-information-symbolic',
+      title: "ntfy",
+      iconName: "dialog-information-symbolic",
     });
     Main.messageTray.add(this._source);
-    this._source.connect('destroy', () => { this._source = null; });
+    this._source.connect("destroy", () => {
+      this._source = null;
+    });
   }
 
   /**
@@ -70,8 +72,7 @@ export class SubscriptionManager {
    * Notify connection state change
    */
   _connectionChanged(topicUrl, connected) {
-    if (this._connectionChange)
-      this._connectionChange(topicUrl, connected);
+    if (this._connectionChange) this._connectionChange(topicUrl, connected);
   }
 
   /**
@@ -81,35 +82,42 @@ export class SubscriptionManager {
    */
   async subscribe(topicUrl) {
     const { baseUrl, topic } = parseTopicUrl(topicUrl);
-    const serverUrl = baseUrl || this.settings.get_string('server');
+    const serverUrl = baseUrl || this.settings.get_string("server");
     const apiKey = getApiKey(this.settings, serverUrl);
-    
+
     const fullTopicUrl = `${serverUrl}/${topic}`;
-    
+
     if (this.subscriptions[fullTopicUrl]) {
       debugLog(`[SubscriptionManager] Already subscribed to ${fullTopicUrl}`);
       return true;
     }
-    
+
     debugLog(`[SubscriptionManager] Subscribing to ${fullTopicUrl}`);
-    
-    const api = new NtfyApi(serverUrl, apiKey, this.settings.get_boolean('accept-self-signed'));
-    const limit = this.settings.get_int('history-limit');
-    
+
+    const api = new NtfyApi(
+      serverUrl,
+      apiKey,
+      this.settings.get_boolean("accept-self-signed"),
+    );
+    const limit = this.settings.get_int("history-limit");
+
     // Resume from the last delivered message id (null -> 'all' -> first-ever full load)
     const since = await notificationStore.getLastMessageId(fullTopicUrl);
-    
+
     const subscription = api.subscribe(
       topic,
       (msg) => this._handleMessage(fullTopicUrl, msg, limit),
       (error) => {
-        debugLog(`[SubscriptionManager] Subscription error for ${fullTopicUrl}:`, error);
+        debugLog(
+          `[SubscriptionManager] Subscription error for ${fullTopicUrl}:`,
+          error,
+        );
         this._connectionChanged(fullTopicUrl, false);
       },
       () => this._connectionChanged(fullTopicUrl, true),
-      since
+      since,
     );
-    
+
     this.subscriptions[fullTopicUrl] = subscription;
 
     this._connectionChanged(fullTopicUrl, true);
@@ -126,9 +134,9 @@ export class SubscriptionManager {
     if (!sub) {
       return false;
     }
-    
+
     debugLog(`[SubscriptionManager] Unsubscribing from ${topicUrl}`);
-    
+
     sub.cancel();
     delete this.subscriptions[topicUrl];
     return true;
@@ -166,28 +174,35 @@ export class SubscriptionManager {
    */
   async _handleMessage(topicUrl, msg, limit) {
     // A server-side delete (or a deleted replay message) stays gone forever
-    if (msg.event === 'message_delete') {
-      await notificationStore.deleteNotification(topicUrl, msg.sequence_id || msg.id);
+    if (msg.event === "message_delete") {
+      await notificationStore.deleteNotification(
+        topicUrl,
+        msg.sequence_id || msg.id,
+      );
       await notificationStore.setLastMessageId(topicUrl, msg.id);
       return;
     }
-    if (msg.event === 'message_clear') {
+    if (msg.event === "message_clear") {
       await notificationStore.markRead(topicUrl, msg.sequence_id || msg.id);
       await notificationStore.setLastMessageId(topicUrl, msg.id);
       return;
     }
-    if (msg.event !== 'message') return;
+    if (msg.event !== "message") return;
     // Check if muted
     const mutedTopics = this._parseMutedTopics();
     if (mutedTopics[topicUrl] && mutedTopics[topicUrl] > Date.now() / 1000) {
       return; // Still muted
     }
-    
+
     // Add to store (returns false if duplicate or seen)
-    const added = await notificationStore.addNotification(topicUrl, {
-      ...msg,
-      new: true
-    }, limit);
+    const added = await notificationStore.addNotification(
+      topicUrl,
+      {
+        ...msg,
+        new: true,
+      },
+      limit,
+    );
 
     // Advance the resume watermark regardless
     await notificationStore.setLastMessageId(topicUrl, msg.id);
@@ -202,57 +217,65 @@ export class SubscriptionManager {
     }
   }
 
-/**
-    * Show desktop notification with click action
-    * @param {string} topicUrl - Topic URL
-    * @param {object} msg - Parsed message
-    */
-_showNotification(topicUrl, msg) {
-      const title = msg.title || `ntfy: ${msg.topic}`;
-      const body = msg.message || '';
-      
-      // ponytail: Source auto-destroys when all notifications are dismissed.
-      // Recreate lazily instead of bailing out when null.
-      if (!this._source) {
-        this._source = new MessageTray.Source({
-          title: 'ntfy',
-          iconName: 'dialog-information-symbolic',
-        });
-        Main.messageTray.add(this._source);
-        this._source.connect('destroy', () => { this._source = null; });
-      }
-      
-      // Create notification
-      const notification = new MessageTray.Notification({
-        source: this._source,
-        title: title,
-        body: body,
+  /**
+   * Show desktop notification with click action
+   * @param {string} topicUrl - Topic URL
+   * @param {object} msg - Parsed message
+   */
+  _showNotification(topicUrl, msg) {
+    const title = msg.title || `ntfy: ${msg.topic}`;
+    const body = msg.message || "";
+
+    // Recreate lazily instead of bailing out when null.
+    if (!this._source) {
+      this._source = new MessageTray.Source({
+        title: "ntfy",
+        iconName: "dialog-information-symbolic",
       });
-      
-      // Pre-cache any attachment into the shared cache so the separate GTK
-      // history dialog can display/open it without doing its own network IO
-      // (GNOME Shell banners can't show large images; the dialog can).
-      if (msg.attachment && msg.attachment.url) {
-        const apiKey = getApiKey(this.settings, topicUrl.replace(/\/[^\/]+$/, ''));
-        const acceptSelfSigned = this.settings.get_boolean('accept-self-signed');
-        attachmentDownloader.downloadAttachment(
-          msg.attachment,
-          msg.id,
-          acceptSelfSigned,
-          apiKey
-        ).then(cachePath => {
-          if (cachePath) debugLog(`[ntfy] Attachment cached for history dialog: ${cachePath}`);
+      Main.messageTray.add(this._source);
+      this._source.connect("destroy", () => {
+        this._source = null;
+      });
+    }
+
+    // Create notification
+    const notification = new MessageTray.Notification({
+      source: this._source,
+      title: title,
+      body: body,
+    });
+
+    // Pre-cache any attachment into the shared cache so the separate GTK
+    // history dialog can display/open it without doing its own network IO
+    // (GNOME Shell banners can't show large images; the dialog can).
+    if (msg.attachment && msg.attachment.url) {
+      const apiKey = getApiKey(
+        this.settings,
+        topicUrl.replace(/\/[^\/]+$/, ""),
+      );
+      const acceptSelfSigned = this.settings.get_boolean("accept-self-signed");
+      attachmentDownloader
+        .downloadAttachment(msg.attachment, msg.id, acceptSelfSigned, apiKey)
+        .then((cachePath) => {
+          if (cachePath)
+            debugLog(
+              `[ntfy] Attachment cached for history dialog: ${cachePath}`,
+            );
         });
-      }
-     
-      // Determine what happens when notification is clicked
-      const { baseUrl, topic } = parseTopicUrl(topicUrl);
-      const serverUrl = baseUrl || this.settings.get_string('server');
-      
-      debugLog(`[ntfy] Creating notification: title="${title}" topicUrl=${topicUrl} msg.id=${msg.id}`);
-      
-      notification.connect('activated', async () => {
-      debugLog(`[ntfy] Notification activated: topicUrl=${topicUrl} msg.id=${msg.id}`);
+    }
+
+    // Determine what happens when notification is clicked
+    const { baseUrl, topic } = parseTopicUrl(topicUrl);
+    const serverUrl = baseUrl || this.settings.get_string("server");
+
+    debugLog(
+      `[ntfy] Creating notification: title="${title}" topicUrl=${topicUrl} msg.id=${msg.id}`,
+    );
+
+    notification.connect("activated", async () => {
+      debugLog(
+        `[ntfy] Notification activated: topicUrl=${topicUrl} msg.id=${msg.id}`,
+      );
       const result = await notificationStore.markRead(topicUrl, msg.id);
       debugLog(`[ntfy] markRead result: ${result}`);
       // Priority: click URL > attachment URL > history dialog
@@ -267,68 +290,90 @@ _showNotification(topicUrl, msg) {
         this._openHistoryDialog(topic, serverUrl);
       }
     });
-      
-      this._source.addNotification(notification);
-    }
-  
+
+    this._source.addNotification(notification);
+  }
+
   /**
    * Open history dialog for a topic
    * @param {string} topic - Topic name
    * @param {string} serverUrl - Server URL
    */
   _openHistoryDialog(topic, serverUrl) {
-    // Already showing this topic: leave it alone (don't clobber read/scroll
-    // state). Only respawn when a different topic is being requested.
-    if (this._historyTopic === topic && this._historyProc &&
-        GLib.file_test(`/proc/${this._historyPid}`, GLib.FileTest.EXISTS)) {
+    if (
+      this._historyTopic === topic &&
+      this._historyProc &&
+      GLib.file_test(`/proc/${this._historyPid}`, GLib.FileTest.EXISTS)
+    ) {
       return;
     }
     // Kill previous dialog if still running
     if (this._historyProc) {
-      try { this._historyProc.force_exit(); } catch (e) { /* already dead */ }
+      this._historyProc.force_exit();
       this._historyProc = null;
       this._historyPid = null;
     }
 
-    const apiKey = getApiKey(this.settings, serverUrl) || '';
-    const accept = this.settings.get_boolean('accept-self-signed');
+    const apiKey = getApiKey(this.settings, serverUrl) || "";
+    const accept = this.settings.get_boolean("accept-self-signed");
     const topicUrl = `${serverUrl}/${topic}`;
     const mutedTopics = this._parseMutedTopics();
-    const isMuted = mutedTopics[topicUrl] && mutedTopics[topicUrl] > Date.now() / 1000;
-    
+    const isMuted =
+      mutedTopics[topicUrl] && mutedTopics[topicUrl] > Date.now() / 1000;
+
     const extDir = GLib.build_filenamev([
-      GLib.get_home_dir(), '.local', 'share', 'gnome-shell', 
-      'extensions', 'ntfy-indicator@rghvdberg'
+      GLib.get_home_dir(),
+      ".local",
+      "share",
+      "gnome-shell",
+      "extensions",
+      "ntfy-indicator@rghvdberg",
     ]);
-    const scriptPath = GLib.build_filenamev([extDir, 'history-dialog.js']);
-    
+    const scriptPath = GLib.build_filenamev([extDir, "history-dialog.js"]);
+
     try {
       const launcher = new Gio.SubprocessLauncher({});
       // The shell process has no display env vars, so hand the GTK4 dialog the
       // session's Wayland socket explicitly (env first, else scan the runtime dir).
-      const waylandDisplay = GLib.getenv('WAYLAND_DISPLAY');
+      const waylandDisplay = GLib.getenv("WAYLAND_DISPLAY");
       if (!waylandDisplay) {
         const rtDir = Gio.File.new_for_path(GLib.get_user_runtime_dir());
         try {
-          const kids = rtDir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
+          const kids = rtDir.enumerate_children(
+            "standard::name",
+            Gio.FileQueryInfoFlags.NONE,
+            null,
+          );
           let info;
           while ((info = kids.next_file(null)) !== null) {
-            if (info.get_name().startsWith('wayland-')) {
-              launcher.setenv('WAYLAND_DISPLAY', info.get_name(), true);
+            if (info.get_name().startsWith("wayland-")) {
+              launcher.setenv("WAYLAND_DISPLAY", info.get_name(), true);
               break;
             }
           }
           kids.close(null);
-        } catch (e) { /* no runtime dir */ }
+        } catch (e) {
+          /* no runtime dir */
+        }
       } else {
-        launcher.setenv('WAYLAND_DISPLAY', waylandDisplay, true);
+        launcher.setenv("WAYLAND_DISPLAY", waylandDisplay, true);
       }
-      const proc = launcher.spawnv(['/usr/bin/gjs', '-m', scriptPath, serverUrl, apiKey, String(accept), topic, this.settings.get_strv('channels').join(','), String(isMuted)]);
+      const proc = launcher.spawnv([
+        "/usr/bin/gjs",
+        "-m",
+        scriptPath,
+        serverUrl,
+        apiKey,
+        String(accept),
+        topic,
+        this.settings.get_strv("channels").join(","),
+        String(isMuted),
+      ]);
       this._historyProc = proc;
       this._historyPid = proc.get_identifier();
       this._historyTopic = topic;
     } catch (e) {
-      debugLog('[ntfy] Failed to launch history dialog:', e);
+      debugLog("[ntfy] Failed to launch history dialog:", e);
     }
 
     // Start polling command file from dialog
@@ -336,11 +381,14 @@ _showNotification(topicUrl, msg) {
   }
 
   _startCommandPoller() {
-    const cmdPath = GLib.build_filenamev([GLib.get_tmp_dir(), 'ntfy-cmd.jsonl']);
+    const cmdPath = GLib.build_filenamev([
+      GLib.get_tmp_dir(),
+      "ntfy-cmd.jsonl",
+    ]);
 
     // Clear old commands
     if (GLib.file_test(cmdPath, GLib.FileTest.EXISTS)) {
-      GLib.file_set_contents(cmdPath, '');
+      GLib.file_set_contents(cmdPath, "");
     }
 
     if (this._commandPollerId) {
@@ -350,11 +398,15 @@ _showNotification(topicUrl, msg) {
 
     this._commandPollerId = GLib.timeout_add(GLib.PRIORITY_LOW, 150, () => {
       // Check if dialog is still alive
-      if (!this._historyPid || !GLib.file_test(`/proc/${this._historyPid}`, GLib.FileTest.EXISTS)) {
+      if (
+        !this._historyPid ||
+        !GLib.file_test(`/proc/${this._historyPid}`, GLib.FileTest.EXISTS)
+      ) {
         this._commandPollerId = null;
         return GLib.SOURCE_REMOVE;
       }
-      if (!GLib.file_test(cmdPath, GLib.FileTest.EXISTS)) return GLib.SOURCE_CONTINUE;
+      if (!GLib.file_test(cmdPath, GLib.FileTest.EXISTS))
+        return GLib.SOURCE_CONTINUE;
       const file = Gio.File.new_for_path(cmdPath);
       file.load_contents_async(null, async (source, result) => {
         try {
@@ -363,29 +415,34 @@ _showNotification(topicUrl, msg) {
           const text = new TextDecoder().decode(contents).trim();
           if (!text) return;
           // Clear file immediately
-          GLib.file_set_contents(cmdPath, '');
-          for (const line of text.split('\n')) {
+          GLib.file_set_contents(cmdPath, "");
+          for (const line of text.split("\n")) {
             if (!line.trim()) continue;
             try {
               const cmd = JSON.parse(line);
               const topicUrl = cmd.topicUrl;
-              if (cmd.cmd === 'markRead') {
+              if (cmd.cmd === "markRead") {
                 await notificationStore.markRead(topicUrl, cmd.id);
-              } else if (cmd.cmd === 'delete') {
+              } else if (cmd.cmd === "delete") {
                 await notificationStore.deleteNotification(topicUrl, cmd.id);
-              } else if (cmd.cmd === 'mute') {
+              } else if (cmd.cmd === "mute") {
                 this.mute(topicUrl, 3600);
-              } else if (cmd.cmd === 'unmute') {
+              } else if (cmd.cmd === "unmute") {
                 this.unmute(topicUrl);
-              } else if (cmd.cmd === 'markAllRead') {
+              } else if (cmd.cmd === "markAllRead") {
                 await notificationStore.markAllRead(topicUrl);
-              } else if (cmd.cmd === 'deleteAll') {
+              } else if (cmd.cmd === "deleteAll") {
                 const all = await notificationStore.load(topicUrl);
-                for (const n of all) await notificationStore.deleteNotification(topicUrl, n.id);
+                for (const n of all)
+                  await notificationStore.deleteNotification(topicUrl, n.id);
               }
-            } catch (e) { /* skip */ }
+            } catch (e) {
+              /* skip */
+            }
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
       });
       return GLib.SOURCE_CONTINUE;
     });
@@ -397,7 +454,7 @@ _showNotification(topicUrl, msg) {
    */
   _parseMutedTopics() {
     try {
-      const mutedStr = this.settings.get_string('muted-topics');
+      const mutedStr = this.settings.get_string("muted-topics");
       return JSON.parse(mutedStr);
     } catch (e) {
       return {};
@@ -412,7 +469,7 @@ _showNotification(topicUrl, msg) {
   mute(topicUrl, durationSeconds = 3600) {
     const mutedTopics = this._parseMutedTopics();
     mutedTopics[topicUrl] = Date.now() / 1000 + durationSeconds;
-    this.settings.set_string('muted-topics', JSON.stringify(mutedTopics));
+    this.settings.set_string("muted-topics", JSON.stringify(mutedTopics));
   }
 
   /**
@@ -422,7 +479,7 @@ _showNotification(topicUrl, msg) {
   unmute(topicUrl) {
     const mutedTopics = this._parseMutedTopics();
     delete mutedTopics[topicUrl];
-    this.settings.set_string('muted-topics', JSON.stringify(mutedTopics));
+    this.settings.set_string("muted-topics", JSON.stringify(mutedTopics));
   }
 }
 
@@ -439,3 +496,4 @@ export function initSubscriptionManager(settings) {
   subscriptionManager = new SubscriptionManager(settings);
   return subscriptionManager;
 }
+
