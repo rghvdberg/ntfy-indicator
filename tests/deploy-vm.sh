@@ -24,6 +24,9 @@ gnome-extensions pack -f -o build \
 
 echo "=> install on $TARGET"
 scp "${SSH_OPTS[@]}" "$ZIP" "$TARGET:/tmp/ntfy-ext.zip"
+ssh "${SSH_OPTS[@]}" "$TARGET" "mkdir -p ~/ntfy-tests"
+scp "${SSH_OPTS[@]}" tests/0*.js tests/helpers.js "$TARGET:~/ntfy-tests/" 2>/dev/null || true
+
 ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}bash -s" <<EOF
 set -e
 gnome-extensions install --force /tmp/ntfy-ext.zip
