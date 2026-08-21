@@ -211,4 +211,34 @@ export class NtfyApi {
       },
     };
   }
+
+  /**
+   * One-shot publish (message text or attachment bytes). Honors the live
+   * acceptSelfSigned policy, including across TLS session resumption.
+   * @param {string} method - POST (text) or PUT (attachment)
+   * @param {string} path - Path below serverUrl, e.g. "/mytopic" or with query
+   * @param {string|null} contentType - null for raw attachment bytes
+   * @returns {Promise<void>}
+   */
+  publish(method, path, contentType, bytes, headers = {}) {
+    return new Promise((resolve, reject) => {
+      const msg = this._makeMessage(method, path, headers);
+      msg.set_request_body_from_bytes(contentType, bytes);
+      this.session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (session, result) => {
+        try {
+          session.send_and_read_finish(result);
+          const tlsErrors = msg.get_tls_peer_certificate_errors();
+          if (!this.acceptSelfSigned && tlsErrors !== Gio.TlsCertificateFlags.NONE) {
+            debugLog(`[NtfyApi] publish rejected: TLS certificate errors=${tlsErrors}`);
+            reject(new Error('Unacceptable TLS certificate'));
+            return;
+          }
+          resolve();
+        } catch (e) {
+          debugLog('[NtfyApi] publish failed:', e.message);
+          reject(e);
+        }
+      });
+    });
+  }
 }

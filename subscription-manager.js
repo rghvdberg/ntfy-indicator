@@ -322,8 +322,6 @@ export class SubscriptionManager {
       this._historyPid = null;
     }
 
-    const apiKey = getApiKey(this.settings, serverUrl) || "";
-    const accept = this.settings.get_boolean("accept-self-signed");
     const topicUrl = `${serverUrl}/${topic}`;
     const mutedTopics = this._parseMutedTopics();
     const isMuted =
@@ -371,8 +369,6 @@ export class SubscriptionManager {
         "-m",
         scriptPath,
         serverUrl,
-        apiKey,
-        String(accept),
         topic,
         this.settings.get_strv("channels").join(","),
         String(isMuted),
@@ -443,6 +439,8 @@ export class SubscriptionManager {
                 const all = await notificationStore.load(topicUrl);
                 for (const n of all)
                   await notificationStore.deleteNotification(topicUrl, n.id);
+              } else if (cmd.cmd === "publish") {
+                await this._publishFromCommand(cmd);
               }
             } catch (e) {
               /* skip */
@@ -454,6 +452,40 @@ export class SubscriptionManager {
       });
       return GLib.SOURCE_CONTINUE;
     });
+  }
+
+  /**
+   * Publish on behalf of the history dialog (command-file driven). Reads
+   * server URL, API key and TLS policy live from settings so the dialog
+   * never needs its own HTTP stack.
+   */
+  async _publishFromCommand(cmd) {
+    const topicUrl = cmd.topicUrl;
+    const baseUrl = topicUrl.replace(/\/[^\/]+$/, "");
+    const api = new NtfyApi(
+      baseUrl,
+      getApiKey(this.settings, baseUrl),
+      this.settings.get_boolean("accept-self-signed"),
+    );
+    const path = topicUrl.replace(baseUrl, "");
+    if (cmd.filePath) {
+      const file = Gio.File.new_for_path(cmd.filePath);
+      const [, bytes] = await new Promise((resolve, reject) =>
+        file.load_contents_async(GLib.PRIORITY_DEFAULT, null, (f, r) => {
+          try {
+            resolve(f.load_contents_finish(r));
+          } catch (e) {
+            reject(e);
+          }
+        }),
+      );
+      const name = cmd.filePath.split("/").pop();
+      const query = ["filename=" + encodeURIComponent(name)];
+      if (cmd.message) query.push("message=" + encodeURIComponent(cmd.message));
+      await api.publish("PUT", `${path}?${query.join("&")}`, null, bytes, cmd.headers || {});
+    } else {
+      await api.publish("POST", path, "text/plain", new TextEncoder().encode(cmd.message), cmd.headers || {});
+    }
   }
 
   /**

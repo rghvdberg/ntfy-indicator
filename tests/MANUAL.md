@@ -52,6 +52,14 @@ a past regression; ~10 minutes on the test VM.
       - Set it back to 100, re-subscribe (toggle the topic off/on in Channels),
         publish more, confirm the store grows past 10.
 
+## Dialog publishing
+- [ ] Quick publish (entry at dialog bottom): message arrives as banner + row
+      within ~2s (routed via command file; shell publishes with live settings)
+- [ ] Full publish: title/priority/tags applied; attachment file arrives with
+      correct filename and preview
+- [ ] TLS toggle OFF → quick publish produces nothing on the server (check web
+      app) — publish honors the same policy as the feed; no silent bypass
+
 ## Lifecycle
 - [ ] Disable → enable in same session: no errors, indicator returns
       (destroy() regression from f578b2e)

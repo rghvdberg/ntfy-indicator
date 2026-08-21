@@ -118,6 +118,29 @@ async function main() {
   assert(events.some(e => e.event === 'message_clear' && e.sequence_id === p1Id) &&
          events.some(e => e.event === 'message_delete' && e.sequence_id === p2Id),
     'interleaved: both tombstones forwarded');
+
+  // 7. publish(): one-shot POST lands on the server
+  const api = new NtfyApi(BASE, null, SELF_SIGNED);
+  await api.publish('POST', `/${TOPIC}`, 'text/plain', new TextEncoder().encode('from publish()'), { Title: 't1' });
+  events = [];
+  sub = subscribe(events);
+  assert(await waitFor(() => events.some(e => e.event === 'message' && e.message === 'from publish()' && e.title === 't1')),
+    'api.publish: text message delivered');
+
+  // 8. publish() honors TLS policy across session resumption
+  if (SELF_SIGNED) {
+    const strict = new NtfyApi(BASE, null, false);
+    let rejected = false;
+    await strict.publish('POST', `/${TOPIC}`, 'text/plain', new TextEncoder().encode('nope')).catch(() => { rejected = true; });
+    assert(rejected, 'api.publish: rejects when self-signed not accepted');
+
+    await api.publish('PUT', `/${TOPIC}?filename=t.txt&message=att`, null, new TextEncoder().encode('bytes'));
+    events = [];
+    sub.cancel();
+    sub = subscribe(events);
+    assert(await waitFor(() => events.some(e => e.event === 'message' && e.attachment?.name === 't.txt')),
+      'api.publish: attachment PUT delivered with filename+message query');
+  }
 }
 
 runMain(main);

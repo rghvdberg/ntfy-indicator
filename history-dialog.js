@@ -37,7 +37,6 @@ const debug =
 // Loaded lazily so importing this module from the shell stays GTK-free
 let Gtk = null;
 let Adw = null;
-let Soup = null;
 let Pango = null;
 let GdkPixbuf = null;
 
@@ -45,7 +44,6 @@ async function _loadAppLibs() {
   if (Gtk) return;
   Gtk = (await import("gi://Gtk?version=4.0")).default;
   Adw = (await import("gi://Adw?version=1")).default;
-  Soup = (await import("gi://Soup?version=3.0")).default;
   Pango = (await import("gi://Pango")).default;
   GdkPixbuf = (await import("gi://GdkPixbuf?version=2.0")).default;
 }
@@ -54,21 +52,12 @@ export async function main() {
   await _loadAppLibs();
 
   const args = ARGV;
-  if (args.length < 6) {
-    print(
-      "Usage: history-dialog.js serverUrl apiKey acceptSelfSigned initialTopic topic1,topic2,... muted",
-    );
+  if (args.length < 4) {
+    print("Usage: history-dialog.js serverUrl initialTopic topic1,topic2,... muted");
     return 1;
   }
 
-  const [
-    serverUrl,
-    apiKey,
-    acceptSelfSigned,
-    initialTopic,
-    topicsArg,
-    mutedArg,
-  ] = args;
+  const [serverUrl, initialTopic, topicsArg, mutedArg] = args;
   const isMutedInitially = mutedArg === "true";
   const globalBaseUrl = serverUrl.replace(/\/$/, "");
 
@@ -114,7 +103,6 @@ export async function main() {
   });
 
   app.connect("activate", () => {
-    const session = new Soup.Session();
     let currentTopic = initialTopic;
 
     const window = new Adw.ApplicationWindow({
@@ -888,69 +876,15 @@ export async function main() {
       }
     });
 
-    // Shared publish sender: builds the Soup message (auth + cert + headers)
-    // and runs it, calling onSuccess/onError.
-    function _sendPublish(
-      url,
-      method,
-      contentType,
-      bytes,
-      headers,
-      onSuccess,
-      onError,
-    ) {
-      const msg = Soup.Message.new(method, url);
-      if (apiKey)
-        msg.request_headers.append("Authorization", "Bearer " + apiKey);
-      if (acceptSelfSigned === "true")
-        msg.connect(
-          "accept-certificate",
-          (_m, _c, errors) => errors === Gio.TlsCertificateFlags.UNKNOWN_CA,
-        );
-      for (const [k, v] of Object.entries(headers))
-        msg.request_headers.append(k, v);
-      msg.set_request_body_from_bytes(contentType, bytes);
-
-      session.send_and_read_async(
-        msg,
-        GLib.PRIORITY_DEFAULT,
-        null,
-        (sess, result) => {
-          try {
-            sess.send_and_read_finish(result);
-            onSuccess();
-          } catch (e) {
-            if (debug) console.error(`[history] Publish failed: ${e.message}`);
-            if (onError) onError();
-          }
-        },
-      );
-    }
-
     // === Quick Publish (single-line entry) ===
+    // Publishing goes through the command file; the shell does the HTTP with
+    // live settings (API key, TLS policy). Confirmation is the message
+    // appearing in the list via the feed, like the ntfy web app.
     function _doPublish() {
       const text = publishEntry.get_text().trim();
       if (!text) return;
-
-      sendBtn.set_sensitive(false);
-      sendBtn.set_label("Sending...");
-
-      _sendPublish(
-        topicUrlMap[currentTopic],
-        "POST",
-        "text/plain",
-        new TextEncoder().encode(text),
-        {},
-        () => {
-          publishEntry.set_text("");
-          sendBtn.set_label("Send");
-          sendBtn.set_sensitive(true);
-        },
-        () => {
-          sendBtn.set_label("Send");
-          sendBtn.set_sensitive(true);
-        },
-      );
+      _sendCommand("publish", { message: text });
+      publishEntry.set_text("");
     }
 
     // === Full Publish Dialog (multiline + advanced fields) ===
@@ -1114,55 +1048,13 @@ export async function main() {
         const tags = tagsEntry.get_text().trim();
         if (tags) headers["Tags"] = tags;
 
-        publishBtn.set_sensitive(false);
-        publishBtn.set_label("Sending...");
-
-        const doSend = (fileBytes) => {
-          // File publish: PUT with filename+message query; text publish: POST
-          const isFile = fileBytes !== null;
-          if (!isFile && !text) return;
-          let url = topicUrlMap[currentTopic];
-          if (isFile) {
-            const fileName = attachFilePath.split("/").pop();
-            const queryParts = ["filename=" + encodeURIComponent(fileName)];
-            if (text) queryParts.push("message=" + encodeURIComponent(text));
-            url += "?" + queryParts.join("&");
-          }
-
-          _sendPublish(
-            url,
-            isFile ? "PUT" : "POST",
-            isFile ? null : "text/plain",
-            isFile ? fileBytes : new TextEncoder().encode(text),
-            headers,
-            () => dlg.close(),
-            () => {
-              publishBtn.set_label("Publish");
-              publishBtn.set_sensitive(true);
-            },
-          );
-        };
-
-        if (attachFilePath) {
-          const file = Gio.File.new_for_path(attachFilePath);
-          file.load_contents_async(null, (source, result) => {
-            let fileBytes = null;
-            try {
-              const [ok, bytes] = source.load_contents_finish(result);
-              if (!ok) throw new Error("read failed");
-              fileBytes = bytes;
-            } catch (e) {
-              if (debug)
-                console.error("[history] Failed to read attachment file");
-              publishBtn.set_label("Publish");
-              publishBtn.set_sensitive(true);
-              return;
-            }
-            doSend(fileBytes);
-          });
-        } else {
-          doSend(null);
-        }
+        // Shell does the HTTP with live settings; attachment is read in place.
+        _sendCommand("publish", {
+          message: text,
+          filePath: attachFilePath,
+          headers,
+        });
+        dlg.close();
       });
       btnRow.append(publishBtn);
       vbox.append(btnRow);
