@@ -20,7 +20,7 @@ import GLib from 'gi://GLib';
 export function debugLog(...args) {
   const debug = GLib.getenv('NTFY_DEBUG');
   if (debug !== null && debug !== '0')
-    console.debug('[ntfy]', ...args);
+    console.log('[ntfy]', ...args);
 }
 
 export function getDataDir() {

@@ -112,9 +112,6 @@ class Indicator extends PanelMenu.Button {
       else if (key === 'server' || key === 'api-keys' || key === 'accept-self-signed') this._restartSubscriptions();
     });
 
-    subscriptionManager.setConnectionChange(() => {
-      this._updateButtonText().catch(e => debugLog('[ntfy] _updateButtonText failed:', e));
-    });
     notificationStore.setOnChange(() => {
       this._rebuildMenu().catch(e => debugLog('[ntfy] _rebuildMenu failed:', e));
       this._updateButtonText().catch(e => debugLog('[ntfy] _updateButtonText failed:', e));
@@ -128,6 +125,9 @@ class Indicator extends PanelMenu.Button {
     this._updateButtonText();
   }
 
+  // Rebuilds all live connections with current settings. Topic subscriptions
+  // themselves persist — channels config, store and resume watermark are
+  // untouched; only the network streams are torn down and re-opened.
   _restartSubscriptions() {
     subscriptionManager.unsubscribeAll();
     this._startSubscriptions();
@@ -154,7 +154,6 @@ class Indicator extends PanelMenu.Button {
     if (this._settingsChangedId)
       this.settings.disconnect(this._settingsChangedId);
     notificationStore.setOnChange(null);
-    subscriptionManager.setConnectionChange(null);
     subscriptionManager.unsubscribeAll();
     super.destroy();
   }

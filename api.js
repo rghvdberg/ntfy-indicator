@@ -1,6 +1,11 @@
 /**
  * ntfy API client — libsoup3, non-blocking
  *
+ * Subscribes via the ntfy JSON stream endpoint (GET /<topic>/json?since=...):
+ * the server holds the connection open and pushes one JSON object per line.
+ * On disconnect the client reconnects with exponential backoff, resuming from
+ * the last seen message id.
+ *
  * Copyright 2026 Rob van den Berg
  *
  * This program is free software: you can redistribute it and/or modify
@@ -9,7 +14,9 @@
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; see the GNU General Public License for details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for details.
  *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
@@ -20,6 +27,11 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
 import { debugLog } from './utils.js';
+
+// Lines are held back briefly before delivery so that a replayed message and
+// its trailing message_delete/message_clear tombstone (adjacent rows in ntfy's
+// replay) land in the same batch and never produce a spurious notification.
+const BATCH_WINDOW_MS = 300;
 
 export class NtfyApi {
   constructor(serverUrl, apiKey = null, acceptSelfSigned = false) {
@@ -32,11 +44,9 @@ export class NtfyApi {
   _makeMessage(method, path, headers = {}) {
     const msg = Soup.Message.new(method, `${this.serverUrl}${path}`);
 
-    if (this.acceptSelfSigned) {
-      msg.connect('accept-certificate', (_msg, _cert, errors) =>
-        errors === Gio.TlsCertificateFlags.UNKNOWN_CA
-      );
-    }
+    // Opt-in accepts every certificate error class (unknown CA, expired, …);
+    // the post-connect check below re-enforces policy across TLS resumption.
+    msg.connect('accept-certificate', () => this.acceptSelfSigned);
 
     if (this.apiKey) {
       msg.request_headers.append('Authorization', `Bearer ${this.apiKey}`);
@@ -49,90 +59,155 @@ export class NtfyApi {
     return msg;
   }
 
-  subscribe(topic, onMessage, onError, onOpen, since = null) {
+  subscribe(topic, onMessage, onError, since = null) {
     let cancelled = false;
     let timeoutId = null;
     let backoff = 1;
     let lastId = since;
+    const cancellable = new Gio.Cancellable();
 
-    const poll = () => {
-      if (cancelled) return;
+    let batch = [];
+    let batchTimerId = null;
 
-      const sinceParam = lastId ? lastId : 'all';
-      const path = `/${topic}/json?poll=1&since=${sinceParam}`;
-      const msg = this._makeMessage('GET', path);
+    const flushBatch = () => {
+      if (batchTimerId) {
+        GLib.source_remove(batchTimerId);
+        batchTimerId = null;
+      }
+      if (!batch.length || cancelled) {
+        batch = [];
+        return;
+      }
+      const parsedLines = batch;
+      batch = [];
 
-      this.session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (session, result) => {
-        if (cancelled) return;
-
-        try {
-          const bytes = session.send_and_read_finish(result);
-          const text = new TextDecoder().decode(bytes.get_data());
-
-          if (onOpen) onOpen();
-          backoff = 1;
-
-          const lines = text.trim().split('\n');
-          const parsedLines = [];
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const parsed = JSON.parse(line);
-              if (parsed.id) lastId = parsed.id;
-              parsedLines.push(parsed);
-            } catch (e) {
-              debugLog(`[NtfyApi] parse error: ${e.message}`);
-            }
-          }
-          // Tombstoned replay: within a batch, messages that also carry a
-          // message_delete/message_clear are forwarded as the tombstone so they
-          // never re-notify.
-          const deletedIds = new Set();
-          const clearedIds = new Set();
-          for (const p of parsedLines) {
-            if (!p.sequence_id) continue;
-            if (p.event === 'message_delete') deletedIds.add(p.sequence_id);
-            else if (p.event === 'message_clear') clearedIds.add(p.sequence_id);
-          }
-          for (const parsed of parsedLines) {
-            if (onMessage) {
-              if (parsed.event === 'message' && deletedIds.has(parsed.id)) {
-                onMessage({ event: 'message_delete', sequence_id: parsed.id, id: parsed.id, topic: parsed.topic });
-              } else if (parsed.event === 'message' && clearedIds.has(parsed.id)) {
-                onMessage({ event: 'message_clear', sequence_id: parsed.id, id: parsed.id, topic: parsed.topic });
-              } else {
-                onMessage(parsed);
-              }
-            }
-          }
-
-          if (!cancelled) {
-            timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
-              poll();
-              return GLib.SOURCE_REMOVE;
-            });
-          }
-        } catch (e) {
-          debugLog('[NtfyApi] subscribe failed:', e);
-          if (onError) onError(e);
-          const delay = Math.min(backoff * 2, 30);
-          backoff = delay;
-          if (!cancelled) {
-            timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, delay, () => {
-              poll();
-              return GLib.SOURCE_REMOVE;
-            });
+      // Tombstoned replay: within a batch, messages that also carry a
+      // message_delete/message_clear are forwarded as the tombstone so they
+      // never re-notify.
+      const deletedIds = new Set();
+      const clearedIds = new Set();
+      for (const p of parsedLines) {
+        if (!p.sequence_id) continue;
+        if (p.event === 'message_delete') deletedIds.add(p.sequence_id);
+        else if (p.event === 'message_clear') clearedIds.add(p.sequence_id);
+      }
+      for (const parsed of parsedLines) {
+        if (onMessage) {
+          if (parsed.event === 'message' && (deletedIds.has(parsed.id) || clearedIds.has(parsed.id))) {
+            const ev = deletedIds.has(parsed.id) ? 'message_delete' : 'message_clear';
+            onMessage({ event: ev, sequence_id: parsed.id, id: parsed.id, topic: parsed.topic });
+          } else {
+            onMessage(parsed);
           }
         }
+      }
+    };
+
+    const queueLine = (line) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(line);
+      } catch (e) {
+        debugLog(`[NtfyApi] parse error: ${e.message}`);
+        return;
+      }
+      if (parsed.id) lastId = parsed.id;
+
+      // Hold every line for the batch window: a replayed message and its
+      // trailing tombstone must land in one flush to suppress cleanly.
+      // Flushing eagerly on tombstones splits adjacency when an unrelated
+      // tombstone sits between a message and its own.
+      batch.push(parsed);
+      if (!batchTimerId && !cancelled) {
+        batchTimerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, BATCH_WINDOW_MS, () => {
+          batchTimerId = null;
+          flushBatch();
+          return GLib.SOURCE_REMOVE;
+        });
+      }
+    };
+
+    const readLines = (dataStream) => {
+      dataStream.read_line_async(GLib.PRIORITY_DEFAULT, cancellable, (stream, result) => {
+        let line = null;
+        try {
+          [line] = stream.read_line_finish_utf8(result);
+        } catch (e) {
+          if (cancelled) return;
+          debugLog('[NtfyApi] stream error:', e.message);
+          if (onError) onError(e);
+          retry();
+          return;
+        }
+        if (line === null) {
+          // Server closed the stream; reconnect and resume from lastId.
+          if (!cancelled) scheduleReconnect(1);
+          return;
+        }
+        if (line.trim()) queueLine(line);
+        if (!cancelled) readLines(dataStream);
       });
     };
 
-    poll();
+    const retry = () => {
+      scheduleReconnect(backoff);
+      backoff = Math.min(backoff * 2, 30);
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+
+      const sinceParam = lastId ? lastId : 'all';
+      const msg = this._makeMessage('GET', `/${topic}/json?since=${sinceParam}`);
+
+      this.session.send_async(msg, GLib.PRIORITY_DEFAULT, cancellable, (session, result) => {
+        if (cancelled) return;
+        let stream;
+        try {
+          stream = session.send_finish(result);
+        } catch (e) {
+          if (cancelled) return;
+          debugLog('[NtfyApi] connect failed:', e.message);
+          if (onError) onError(e);
+          retry();
+          return;
+        }
+        // TLS session resumption skips the accept-certificate handshake step,
+        // so a connection reused from an earlier permissive policy would
+        // silently succeed; enforce policy against the reported cert errors.
+        const tlsErrors = msg.get_tls_peer_certificate_errors();
+        if (!this.acceptSelfSigned && tlsErrors !== Gio.TlsCertificateFlags.NONE) {
+          debugLog(`[NtfyApi] connect rejected: TLS certificate errors=${tlsErrors}`);
+          stream.close(null);
+          if (onError) onError(new Error('Unacceptable TLS certificate'));
+          retry();
+          return;
+        }
+        backoff = 1;
+        debugLog(`[NtfyApi] /${topic} CONNECTED (accept=${this.acceptSelfSigned}, since=${sinceParam})`);
+        const dataStream = new Gio.DataInputStream({ base_stream: stream });
+        readLines(dataStream);
+      });
+    };
+
+    function scheduleReconnect(delay) {
+      if (cancelled) return;
+      timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, delay, () => {
+        timeoutId = null;
+        connect();
+        return GLib.SOURCE_REMOVE;
+      });
+    }
+
+    connect();
 
     return {
       cancel: () => {
         cancelled = true;
+        cancellable.cancel();
         if (timeoutId) GLib.source_remove(timeoutId);
+        if (batchTimerId) GLib.source_remove(batchTimerId);
+        batchTimerId = null;
       },
     };
   }

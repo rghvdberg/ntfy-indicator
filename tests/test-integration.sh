@@ -114,6 +114,27 @@ for i in $(seq 1 3); do curl -sk -d "shrink $i" "$URL" >/dev/null; done
 sleep 6
 ok "$(q rows)" 10 "limit 10: re-trims to 10 on next write"
 
+echo "=== tls toggle off must stop delivery (session-resumption regression) ==="
+# Only meaningful on self-signed servers: with a valid CA chain there is no
+# policy difference to observe. Requires NTFY_TEST_SELF_SIGNED=true.
+if [ "$NTFY_TEST_SELF_SIGNED" = "true" ]; then
+    gs accept-self-signed true
+    sleep 4
+    IDT1=$(pub "tls off 1" "tls")
+    gs accept-self-signed false
+    sleep 5
+    ok "$(q has $IDT1)" 0 "publish right after toggle-off not delivered"
+    sleep 25
+    IDT2=$(pub "tls off 2" "tls")
+    sleep 6
+    ok "$(q has $IDT2)" 0 "publish 30s later while off not delivered"
+    gs accept-self-signed true
+    sleep 6
+    ok "$(q has $IDT1)" 1 "missed message delivered once policy restored"
+else
+    echo "skip - tls toggle block needs a self-signed server"
+fi
+
 echo "=== lifecycle: disable/enable ==="
 ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}gnome-extensions disable ntfy-indicator@rghvdberg; sleep 1; gnome-extensions enable ntfy-indicator@rghvdberg; sleep 3; gnome-extensions info ntfy-indicator@rghvdberg | grep -E '^  State'" | grep -q "ACTIVE"
 ok $? 0 "ACTIVE after disable/enable"

@@ -45,7 +45,6 @@ export class SubscriptionManager {
   constructor(settings) {
     this.settings = settings;
     this.subscriptions = {}; // Map of topicUrl -> subscription
-    this._connectionChange = null;
     this._historyPid = null;
     this._historyTopic = null;
 
@@ -58,21 +57,6 @@ export class SubscriptionManager {
     this._source.connect("destroy", () => {
       this._source = null;
     });
-  }
-
-  /**
-   * Set connection state callback
-   * @param {function} callback - Called with (topicUrl, connected) on changes
-   */
-  setConnectionChange(callback) {
-    this._connectionChange = callback;
-  }
-
-  /**
-   * Notify connection state change
-   */
-  _connectionChanged(topicUrl, connected) {
-    if (this._connectionChange) this._connectionChange(topicUrl, connected);
   }
 
   /**
@@ -94,34 +78,56 @@ export class SubscriptionManager {
 
     debugLog(`[SubscriptionManager] Subscribing to ${fullTopicUrl}`);
 
-    const api = new NtfyApi(
-      serverUrl,
-      apiKey,
-      this.settings.get_boolean("accept-self-signed"),
-    );
-    const limit = this.settings.get_int("history-limit");
-
-    // Resume from the last delivered message id (null -> 'all' -> first-ever full load)
-    const since = await notificationStore.getLastMessageId(fullTopicUrl);
-
-    const subscription = api.subscribe(
-      topic,
-      (msg) => this._handleMessage(fullTopicUrl, msg, limit),
-      (error) => {
-        debugLog(
-          `[SubscriptionManager] Subscription error for ${fullTopicUrl}:`,
-          error,
-        );
-        this._connectionChanged(fullTopicUrl, false);
+    // Register synchronously so overlapping restarts can never orphan this
+    // attempt: until the real handle replaces it, any unsubscribeAll() hits
+    // the placeholder and marks it stale.
+    let stale = false;
+    const pending = {
+      cancel: () => {
+        stale = true;
       },
-      () => this._connectionChanged(fullTopicUrl, true),
-      since,
-    );
+    };
+    this.subscriptions[fullTopicUrl] = pending;
 
-    this.subscriptions[fullTopicUrl] = subscription;
+    try {
+      const accept = this.settings.get_boolean("accept-self-signed");
+      const api = new NtfyApi(serverUrl, apiKey, accept);
+      const limit = this.settings.get_int("history-limit");
 
-    this._connectionChanged(fullTopicUrl, true);
-    return true;
+      // Resume from the last delivered message id (null -> 'all' -> first-ever full load)
+      const since = await notificationStore.getLastMessageId(fullTopicUrl);
+
+      debugLog(
+        `[SubscriptionManager] ${fullTopicUrl}: captured acceptSelfSigned=${accept}, since=${since ?? "null"}, stale=${stale}`,
+      );
+
+      if (stale || this.subscriptions[fullTopicUrl] !== pending) {
+        debugLog(
+          `[SubscriptionManager] Subscribe to ${fullTopicUrl} superseded; aborting`,
+        );
+        return false;
+      }
+
+      const subscription = api.subscribe(
+        topic,
+        (msg) => this._handleMessage(fullTopicUrl, msg, limit),
+        (error) => {
+          debugLog(
+            `[SubscriptionManager] Subscription error for ${fullTopicUrl}:`,
+            error,
+          );
+        },
+        since,
+      );
+
+      this.subscriptions[fullTopicUrl] = subscription;
+
+      return true;
+    } finally {
+      if (stale && this.subscriptions[fullTopicUrl] === pending) {
+        delete this.subscriptions[fullTopicUrl];
+      }
+    }
   }
 
   /**
@@ -146,7 +152,9 @@ export class SubscriptionManager {
    * Unsubscribe from all topics
    */
   unsubscribeAll() {
-    for (const topicUrl of Object.keys(this.subscriptions)) {
+    const keys = Object.keys(this.subscriptions);
+    debugLog(`[SubscriptionManager] unsubscribeAll: ${keys.length} live`);
+    for (const topicUrl of keys) {
       this.unsubscribe(topicUrl);
     }
   }

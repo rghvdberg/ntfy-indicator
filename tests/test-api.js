@@ -99,6 +99,25 @@ async function main() {
     'cleared message never delivered as message (batch suppression)');
   assert(events.some(e => e.event === 'message_clear' && e.sequence_id === yId),
     'message_clear forwarded for cleared id');
+
+  // 6. interleaved tombstones: an unrelated tombstone between a message and
+  //    its own must not split the batch and leak the message as live
+  await publish('P1');
+  const p1Id = await fetchId('P1');
+  await publish('P2');
+  const p2Id = await fetchId('P2');
+  await send(makeMsg('DELETE', `/${TOPIC}/${p2Id}`));   // unrelated tombstone first
+  await send(makeMsg('PUT', `/${TOPIC}/${p1Id}/clear`)); // P1's own tombstone after
+  events = [];
+  sub = subscribe(events);
+  await waitFor(() => events.length > 0);
+  await sleepMs(2500);
+  sub.cancel();
+  assert(!events.some(e => e.event === 'message' && (e.id === p1Id || e.id === p2Id)),
+    'interleaved: neither P1 nor P2 delivered as message');
+  assert(events.some(e => e.event === 'message_clear' && e.sequence_id === p1Id) &&
+         events.some(e => e.event === 'message_delete' && e.sequence_id === p2Id),
+    'interleaved: both tombstones forwarded');
 }
 
 runMain(main);

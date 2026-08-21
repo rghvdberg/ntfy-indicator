@@ -39,6 +39,11 @@ a past regression; ~10 minutes on the test VM.
 
 ## Preferences
 - [ ] Server URL field; accept-self-signed toggle works against dev server
+- [ ] TLS toggle off mid-session: with the stream connected on a self-signed
+      server, switch accept-self-signed OFF, publish → no banner, panel count
+      unchanged; publish again ~30s later → still nothing; switch ON → missed
+      messages arrive (regression: GLib TLS session resumption bypasses the
+      accept-certificate handshake path — enforced post-connect in api.js)
 - [ ] API keys JSON field (per-server Bearer)
 - [ ] Channels: add bare topic, add full URL, remove; subscriptions follow
 - [ ] History limit 10–1000 honored
