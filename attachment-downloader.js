@@ -24,11 +24,9 @@ import GLib from 'gi://GLib';
 import { debugLog, getCacheDir } from './utils.js';
 
 export class AttachmentDownloader {
-  constructor(acceptSelfSigned = false, apiKey = null) {
+  constructor() {
     this.cacheDir = getCacheDir();
     this._ensureCacheDir();
-    this.acceptSelfSigned = acceptSelfSigned;
-    this.apiKey = apiKey;
   }
 
   _ensureCacheDir() {
@@ -57,8 +55,7 @@ export class AttachmentDownloader {
    * @param {string} apiKey - Optional API key for authentication
    * @param {(path: string|null) => void} cb - Called with cache path or null
    */
-  _downloadFile(url, cachePath, acceptSelfSigned, apiKey, cb) {
-    try {
+  _downloadFile(url, cachePath, acceptSelfSigned, apiKey, cb) {    try {
       const session = new Soup.Session();
       const msg = Soup.Message.new('GET', url);
 
@@ -106,7 +103,7 @@ export class AttachmentDownloader {
    * Promise API for the shell extension, where promises do get pumped.
    * @returns {Promise<string|null>} Cache path on success, null on failure
    */
-  async downloadAttachment(attachment, notificationId, acceptSelfSigned = this.acceptSelfSigned, apiKey = this.apiKey) {
+  async downloadAttachment(attachment, notificationId, acceptSelfSigned, apiKey) {
     const cachePath = this._resolveCachePath(attachment, notificationId);
     if (!cachePath) return null;
     if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) return cachePath;

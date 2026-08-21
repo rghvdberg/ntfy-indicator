@@ -89,8 +89,7 @@ export class NotificationStore {
       topic: topicUrl,
       notifications: sorted,
       seenIds,
-      lastId,
-      lastUpdated: Date.now() / 1000
+      lastId
     };
     await this._writeFile(
       Gio.File.new_for_path(getNotificationFile(topicUrl)),

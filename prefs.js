@@ -98,7 +98,6 @@ export default class NtfyPreferences extends ExtensionPreferences {
       selection_mode: Gtk.SelectionMode.NONE,
       css_classes: ['boxed-list'],
     });
-    this._topicList = list;
     this._loadTopics(list);
     group.add(list);
 

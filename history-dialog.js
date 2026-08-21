@@ -154,27 +154,9 @@ export async function main() {
 
     const readAllAction = new Gio.SimpleAction({ name: "readall" });
     readAllAction.connect("activate", () => {
+      // The shell-side poller persists the store; the file monitor repaints
+      // the rows from it.
       _sendCommand("markAllRead");
-      // Hide ✓ and green dots on all rows
-      let child = msgListBox.get_first_child();
-      while (child) {
-        const box = child.get_child();
-        if (box) {
-          let c = box.get_first_child(); // headerBox
-          if (c) {
-            let s = c.get_first_child(); // skip timeLabel
-            while (s) {
-              const next = s.get_next_sibling();
-              if (s instanceof Gtk.Label && s.get_text() === "\u25CF")
-                c.remove(s);
-              if (s instanceof Gtk.Button && s.get_label() === "\u2713")
-                s.set_visible(false);
-              s = next;
-            }
-          }
-        }
-        child = child.get_next_sibling();
-      }
       _setTopicCount(currentTopic, 0);
     });
     actions.add_action(readAllAction);
@@ -182,12 +164,7 @@ export async function main() {
     const deleteAllAction = new Gio.SimpleAction({ name: "deleteall" });
     deleteAllAction.connect("activate", () => {
       _sendCommand("deleteAll");
-      let child = msgListBox.get_first_child();
-      while (child) {
-        const next = child.get_next_sibling();
-        msgListBox.remove(child);
-        child = next;
-      }
+      _clearRows();
       _setTopicCount(currentTopic, 0);
     });
     actions.add_action(deleteAllAction);
@@ -520,7 +497,6 @@ export async function main() {
       });
       readBtn.connect("clicked", () => {
         _sendCommand("markRead", { id: m.id });
-        _markReadInStore(currentTopic, m.id);
         if (m.new !== false && m.new !== 0) {
           m.new = 0;
           _setTopicCount(
@@ -746,28 +722,13 @@ export async function main() {
         gesture.connect("released", (_gesture, n_press, _x, _y) => {
           if (n_press > 1) return;
           try {
-            const tempDir = GLib.get_tmp_dir();
-            const ext = cachePath.match(/\.([^.]+)$/)?.[1] || "png";
-            const tempFile = GLib.build_filenamev([
-              tempDir,
-              `ntfy-${Date.now()}.${ext}`,
-            ]);
-            const srcFile = Gio.File.new_for_path(cachePath);
-            const destFile = Gio.File.new_for_path(tempFile);
-            if (srcFile.query_exists(null)) {
-              srcFile.copy(destFile, Gio.FileCopyFlags.OVERWRITE, null, null);
-              if (destFile.query_exists(null)) {
-                try {
-                  Gio.AppInfo.launch_default_for_uri(destFile.get_uri(), null);
-                } catch (e) {
-                  if (debug)
-                    console.error(`[history] Open image failed: ${e.message}`);
-                }
-              }
-            }
+            Gio.AppInfo.launch_default_for_uri(
+              Gio.File.new_for_path(cachePath).get_uri(),
+              null,
+            );
           } catch (e) {
             if (debug)
-              console.error(`[history] Failed to open image: ${e.message}`);
+              console.error(`[history] Open image failed: ${e.message}`);
           }
         });
         picture.add_controller(gesture);
@@ -801,25 +762,6 @@ export async function main() {
       } catch (e) {
         if (debug) console.error(`[history] sendCommand failed: ${e.message}`);
       }
-    }
-
-    // Mark one message read locally (sidecar for own UI, store update is
-    // authoritative via the command poller in the shell)
-    function _markReadInStore(t, id) {
-      const storePath = _storePath(t);
-      _readFileContents(storePath, (contents) => {
-        try {
-          if (!contents) return;
-          const data = JSON.parse(new TextDecoder().decode(contents));
-          const n = (data.notifications || []).find((x) => x.id === id);
-          if (n) {
-            n.new = false;
-          }
-          GLib.file_set_contents(storePath, JSON.stringify(data, null, 2));
-        } catch (e) {
-          /* ignore */
-        }
-      });
     }
 
     // === Load messages from local store ===
@@ -1274,14 +1216,8 @@ export async function main() {
       else if (typeof time === "string") {
         ts = Number(time);
         if (isNaN(ts)) ts = Date.parse(time) / 1000;
-      } else ts = 0;
-      const d = new Date(ts * 1000);
-      const y = d.getFullYear();
-      const mo = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      const h = String(d.getHours()).padStart(2, "0");
-      const mi = String(d.getMinutes()).padStart(2, "0");
-      return `${y}-${mo}-${day} ${h}:${mi}`;
+      } else return "??:??";
+      return GLib.DateTime.new_from_unix_local(ts).format("%F %R");
     } catch (e) {
       return String(time) || "??:??";
     }
