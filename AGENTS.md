@@ -34,8 +34,10 @@ incremental resume, and never re-notifying a message that has already been seen.
   `~/.local/share/ntfy/` holding `notifications`, `seenIds`, `lastId`. This is
   the single source of truth for what is new, read, or deleted.
 - **History dialog** (`history-dialog.js`): standalone GTK4 app spawned by the
-  shell; topics sidebar, messages list, publish entry. It communicates back via
-  a command file (`/tmp/ntfy-cmd.jsonl`) that the shell polls.
+  shell; topics sidebar, messages list, publish entry. It sends actions
+  (mark read/delete/mute/publish) to the shell over D-Bus: the shell owns
+  `com.github.rghvdberg.ntfy_indicator` on the session bus while enabled and
+  exports a void-reply `Service` interface; the dialog is a thin client.
 - **Attachments**: shell and dialog cache downloads in `~/.local/share/ntfy/cache`
   (5 MB cap); images preview in the dialog.
 - **Prefs** (`prefs.js`, Adw): server URL, per-server API key, accept
@@ -54,8 +56,8 @@ incremental resume, and never re-notifying a message that has already been seen.
 - **Read/delete is durable.** Marking read or deleting in the dialog persists
   the id in `seenIds` so the message never resurfaces, even after re-login or a
   `since=all` first-subscribe.
-- **The dialog is a separate process**; messages reach it via the command file,
-  never by direct store access.
+- **The dialog is a separate process**; it holds no store state of its own —
+  actions go to the shell over D-Bus, updates come from the store files.
 
 ## Testing / deployment boundaries
 - All testing and deployment happens on the **ntfy-dev VM**, synced via

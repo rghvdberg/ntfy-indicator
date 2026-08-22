@@ -54,7 +54,7 @@ a past regression; ~10 minutes on the test VM.
 
 ## Dialog publishing
 - [ ] Quick publish (entry at dialog bottom): message arrives as banner + row
-      within ~2s (routed via command file; shell publishes with live settings)
+      within ~2s (routed over D-Bus; shell publishes with live settings)
 - [ ] Full publish: title/priority/tags applied; attachment file arrives with
       correct filename and preview
 - [ ] TLS toggle OFF → quick publish produces nothing on the server (check web

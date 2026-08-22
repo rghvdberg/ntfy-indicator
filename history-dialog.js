@@ -28,6 +28,11 @@ import { attachmentDownloader } from "./attachment-downloader.js";
 const debug =
   GLib.getenv("NTFY_DEBUG") !== null && GLib.getenv("NTFY_DEBUG") !== "0";
 
+// Shell-side service the dialog sends actions to (must match
+// subscription-manager.js)
+const DBUS_NAME = "com.github.rghvdberg.ntfy_indicator";
+const DBUS_PATH = "/com/github/rghvdberg/ntfy_indicator/service";
+
 // Loaded lazily so importing this module from the shell stays GTK-free
 let Gtk = null;
 let Adw = null;
@@ -128,7 +133,7 @@ export async function main() {
 
     const muteAction = new Gio.SimpleAction({ name: "mute" });
     muteAction.connect("activate", () => {
-      _sendCommand(isMuted ? "unmute" : "mute");
+      _sendCommand(isMuted ? "Unmute" : "Mute");
       isMuted = !isMuted;
       _rebuildMenuItems();
     });
@@ -136,11 +141,11 @@ export async function main() {
 
     const readAllAction = new Gio.SimpleAction({ name: "readall" });
     readAllAction.connect("activate", () => {
-      // The shell-side poller persists the store; the file monitor repaints
+      // The shell persists the store; the file monitor repaints
       // the rows from it. Update the visible rows locally too so the tick
       // marks disappear immediately (the store's ids are unchanged by a
       // mark-all-read, so the monitor's id-dedup short-circuit skips a repaint).
-      _sendCommand("markAllRead");
+      _sendCommand("MarkAllRead");
       _setTopicCount(currentTopic, 0);
       for (const row of _rowById.values()) {
         if (row._dotLabel) row._dotLabel.get_parent().remove(row._dotLabel);
@@ -151,7 +156,7 @@ export async function main() {
 
     const deleteAllAction = new Gio.SimpleAction({ name: "deleteall" });
     deleteAllAction.connect("activate", () => {
-      _sendCommand("deleteAll");
+      _sendCommand("DeleteAll");
       _clearRows();
       _setTopicCount(currentTopic, 0);
     });
@@ -485,7 +490,7 @@ export async function main() {
         css_classes: ["flat", "caption"],
       });
       readBtn.connect("clicked", () => {
-        _sendCommand("markRead", { id: m.id });
+        _sendCommand("MarkRead", [m.id], "s");
         if (m.new !== false && m.new !== 0) {
           m.new = 0;
           _setTopicCount(
@@ -504,7 +509,7 @@ export async function main() {
         css_classes: ["flat", "caption"],
       });
       delBtn.connect("clicked", () => {
-        _sendCommand("delete", { id: m.id });
+        _sendCommand("Delete", [m.id], "s");
         if (m.new !== false && m.new !== 0)
           _setTopicCount(
             currentTopic,
@@ -736,24 +741,20 @@ export async function main() {
       }
     }
 
-    // === IPC: command file (single file, topicUrl in each line) ===
-    const _cmdPath = GLib.build_filenamev([
-      GLib.get_tmp_dir(),
-      "ntfy-cmd.jsonl",
-    ]);
-
-    function _sendCommand(cmd, data) {
+    // === IPC: D-Bus calls into the shell's dialog service (void replies) ===
+    function _sendCommand(method, args = [], types = "") {
       try {
-        const file = Gio.File.new_for_path(_cmdPath);
-        const ostream = file.append_to(Gio.FileCreateFlags.NONE, null);
-        const line =
-          JSON.stringify({
-            cmd,
-            topicUrl: topicUrlMap[currentTopic],
-            ...data,
-          }) + "\n";
-        ostream.write_all(new TextEncoder().encode(line), null);
-        ostream.close(null);
+        Gio.DBus.session.call(
+          DBUS_NAME,
+          DBUS_PATH,
+          `${DBUS_NAME}.Service`,
+          method,
+          new GLib.Variant(`(s${types})`, [topicUrlMap[currentTopic], ...args]),
+          null,
+          Gio.DBusCallFlags.NONE,
+          -1,
+          null
+        );
       } catch (e) {
         if (debug) console.error(`[history] sendCommand failed: ${e.message}`);
       }
@@ -884,13 +885,13 @@ export async function main() {
     });
 
     // === Quick Publish (single-line entry) ===
-    // Publishing goes through the command file; the shell does the HTTP with
+    // Publishing goes over D-Bus; the shell does the HTTP with
     // live settings (API key, TLS policy). Confirmation is the message
     // appearing in the list via the feed, like the ntfy web app.
     function _doPublish() {
       const text = publishEntry.get_text().trim();
       if (!text) return;
-      _sendCommand("publish", { message: text });
+      _sendCommand("Publish", [text, "", {}], "ss a{ss}");
       publishEntry.set_text("");
     }
 
@@ -1056,11 +1057,11 @@ export async function main() {
         if (tags) headers["Tags"] = tags;
 
         // Shell does the HTTP with live settings; attachment is read in place.
-        _sendCommand("publish", {
-          message: text,
-          filePath: attachFilePath,
-          headers,
-        });
+        _sendCommand(
+          "Publish",
+          [text, attachFilePath ?? "", headers],
+          "ss a{ss}"
+        );
         dlg.close();
       });
       btnRow.append(publishBtn);

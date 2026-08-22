@@ -39,6 +39,9 @@ elif q == 'seen': print(int(sys.argv[3] in d['seenIds']))
 elif q == 'new':
     n = [x for x in d['notifications'] if x['id'] == sys.argv[3]]
     print(int(bool(n and n[0].get('new'))))
+elif q == 'find':
+    n = [x for x in d['notifications'] if sys.argv[3] in x.get('message', '')]
+    print(n[-1]['id'] if n else 'NONE')
 PY
 q() { ssh "${SSH_OPTS[@]}" "$TARGET" "python3 /tmp/storeq.py ~/$STORE $1 ${2:-}"; }
 
@@ -142,6 +145,59 @@ if [ "$NTFY_TEST_SELF_SIGNED" = "true" ]; then
 else
     echo "skip - tls toggle block needs a self-signed server"
 fi
+
+echo "=== dbus: dialog service (shell exports, dialog calls) ==="
+# The extension owns com.github.rghvdberg.ntfy_indicator while enabled; the
+# history dialog sends actions to it. Drive the service directly with gdbus
+# and assert the store/settings effects. Runs before the lifecycle block so
+# its persisted ids don't disturb earlier replay assertions.
+gs history-limit 100
+DEST=com.github.rghvdberg.ntfy_indicator
+OBJ=/com/github/rghvdberg/ntfy_indicator/service
+IFACE=$DEST.Service
+dbus() { # dbus <Method> [variant args...]
+    ssh "${SSH_OPTS[@]}" "$TARGET" \
+        "${VM_ENV}gdbus call --session --dest $DEST --object-path $OBJ --method $IFACE.$1 ${*:2}" >/dev/null
+}
+EXTID=ntfy-indicator@rghvdberg
+ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}WL=\$(ls \$XDG_RUNTIME_DIR/wayland-* 2>/dev/null | head -1); export WAYLAND_DISPLAY=\${WL##*/}; nohup gjs -m \$HOME/.local/share/gnome-shell/extensions/$EXTID/history-dialog.js '$BASE' '$TOPIC' '$TOPIC' false \$HOME/.local/share/gnome-shell/extensions/$EXTID >/tmp/ntfy-dialog.log 2>&1 & sleep 4"
+ok "$(ssh "${SSH_OPTS[@]}" "$TARGET" "pgrep -c -f 'history-dialo[g].js' || true")" 1 "history dialog process running"
+INTRO=$(ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}gdbus introspect --session --dest $DEST --object-path $OBJ 2>&1")
+for m in MarkRead Delete MarkAllRead DeleteAll Mute Unmute Publish; do
+    echo "$INTRO" | grep -q "$m"; ok $? 0 "service exports method $m"
+done
+
+IDR=$(pub "dbus read me" "dbus-read")
+IDD=$(pub "dbus delete me" "dbus-del")
+sleep 5
+ok "$(q new $IDR)" 1 "pre: markRead target unread"
+ok "$(q has $IDD)" 1 "pre: delete target stored"
+
+dbus MarkRead "'$URL'" "'$IDR'"
+sleep 2
+ok "$(q has $IDR)" 1 "MarkRead keeps row"
+ok "$(q new $IDR)" 0 "MarkRead marks row read"
+ok "$(q seen $IDR)" 1 "MarkRead persists id in seenIds"
+
+dbus Delete "'$URL'" "'$IDD'"
+sleep 2
+ok "$(q has $IDD)" 0 "Delete removes row"
+ok "$(q seen $IDD)" 1 "Delete persists id in seenIds"
+
+dbus Publish "'$URL'" "'via gdbus'" "''" '{}'
+sleep 6
+IDP=$(q find "via gdbus")
+[ "$IDP" != "NONE" ]; ok $? 0 "Publish round-trips into store"
+ok "$(q new $IDP)" 1 "published message is unread"
+
+dbus Mute "'$URL'"
+MT=$(ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}gsettings get org.gnome.shell.extensions.ntfy-indicator muted-topics")
+echo "$MT" | grep -q "$URL"; ok $? 0 "Mute writes muted-topics"
+dbus Unmute "'$URL'"
+MT=$(ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}gsettings get org.gnome.shell.extensions.ntfy-indicator muted-topics")
+ok "$MT" "'{}'" "Unmute clears muted-topics"
+
+ssh "${SSH_OPTS[@]}" "$TARGET" "pkill -f 'history-dialo[g].js' || true"
 
 echo "=== lifecycle: disable/enable ==="
 ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}gnome-extensions disable ntfy-indicator@rghvdberg; sleep 1; gnome-extensions enable ntfy-indicator@rghvdberg; sleep 3; gnome-extensions info ntfy-indicator@rghvdberg | grep -E '^  State'" | grep -q "ACTIVE"

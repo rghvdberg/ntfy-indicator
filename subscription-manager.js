@@ -38,6 +38,30 @@ function _openUrl(url) {
 }
 
 /**
+ * D-Bus endpoint the history dialog process calls into. All actions execute
+ * here where the store, settings and HTTP policy live; replies are void.
+ */
+const DBUS_NAME = "com.github.rghvdberg.ntfy_indicator";
+const DBUS_PATH = "/com/github/rghvdberg/ntfy_indicator/service";
+const SERVICE_XML = `
+<node>
+  <interface name="${DBUS_NAME}.Service">
+    <method name="MarkRead"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>
+    <method name="Delete"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>
+    <method name="MarkAllRead"><arg type="s" direction="in"/></method>
+    <method name="DeleteAll"><arg type="s" direction="in"/></method>
+    <method name="Mute"><arg type="s" direction="in"/></method>
+    <method name="Unmute"><arg type="s" direction="in"/></method>
+    <method name="Publish">
+      <arg type="s" direction="in"/>
+      <arg type="s" direction="in"/>
+      <arg type="s" direction="in"/>
+      <arg type="a{ss}" direction="in"/>
+    </method>
+  </interface>
+</node>`;
+
+/**
  * SubscriptionManager class
  * Handles subscribing/unsubscribing to topics and delivering notifications
  */
@@ -48,6 +72,9 @@ export class SubscriptionManager {
     this.subscriptions = {}; // Map of topicUrl -> subscription
     this._historyPid = null;
     this._historyTopic = null;
+    this._dbusNodeId = null;
+    this._dbusExport = null;
+    this._exportDbusService();
 
     // Create MessageTray source for notifications with click actions
     this._source = new MessageTray.Source({
@@ -58,6 +85,45 @@ export class SubscriptionManager {
     this._source.connect("destroy", () => {
       this._source = null;
     });
+  }
+
+  /**
+   * Export the dialog-facing D-Bus service on the session bus. All actions
+   * run here where the store, settings and HTTP policy live; replies are
+   * void and failures logged. destroy() releases name and export.
+   */
+  _exportDbusService() {
+    const guard = (p) =>
+      Promise.resolve(p).catch((e) =>
+        debugLog("[ntfy] D-Bus action failed:", e),
+      );
+    const handlers = {
+      MarkRead: (topicUrl, id) => guard(notificationStore.markRead(topicUrl, id)),
+      Delete: (topicUrl, id) =>
+        guard(notificationStore.deleteNotification(topicUrl, id)),
+      MarkAllRead: (topicUrl) => guard(notificationStore.markAllRead(topicUrl)),
+      DeleteAll: (topicUrl) =>
+        guard(
+          notificationStore.load(topicUrl).then((all) =>
+            Promise.all(
+              all.map((n) => notificationStore.deleteNotification(topicUrl, n.id)),
+            ),
+          ),
+        ),
+      Mute: (topicUrl) => this.mute(topicUrl, 3600),
+      Unmute: (topicUrl) => this.unmute(topicUrl),
+      Publish: (topicUrl, message, filePath, headers) =>
+        guard(this._publishFromCommand({ topicUrl, message, filePath, headers })),
+    };
+    this._dbusExport = Gio.DBusExportedObject.wrapJSObject(SERVICE_XML, handlers);
+    this._dbusNodeId = Gio.bus_own_name(
+      Gio.BusType.SESSION,
+      DBUS_NAME,
+      Gio.BusNameOwnerFlags.NONE,
+      (conn) => this._dbusExport.export(conn, DBUS_PATH),
+      null,
+      () => debugLog("[ntfy] D-Bus name lost"),
+    );
   }
 
   /**
@@ -165,9 +231,13 @@ export class SubscriptionManager {
    */
   destroy() {
     this.unsubscribeAll();
-    if (this._commandPollerId) {
-      GLib.source_remove(this._commandPollerId);
-      this._commandPollerId = null;
+    if (this._dbusExport) {
+      this._dbusExport.unexport();
+      this._dbusExport = null;
+    }
+    if (this._dbusNodeId !== null) {
+      Gio.bus_unown_name(this._dbusNodeId);
+      this._dbusNodeId = null;
     }
     if (this._source) {
       this._source.destroy();
@@ -373,83 +443,10 @@ export class SubscriptionManager {
     } catch (e) {
       debugLog("[ntfy] Failed to launch history dialog:", e);
     }
-
-    // Start polling command file from dialog
-    this._startCommandPoller();
-  }
-
-  _startCommandPoller() {
-    const cmdPath = GLib.build_filenamev([
-      GLib.get_tmp_dir(),
-      "ntfy-cmd.jsonl",
-    ]);
-
-    // Clear old commands
-    if (GLib.file_test(cmdPath, GLib.FileTest.EXISTS)) {
-      GLib.file_set_contents(cmdPath, "");
-    }
-
-    if (this._commandPollerId) {
-      GLib.source_remove(this._commandPollerId);
-      this._commandPollerId = null;
-    }
-
-    this._commandPollerId = GLib.timeout_add(GLib.PRIORITY_LOW, 150, () => {
-      // Check if dialog is still alive
-      if (
-        !this._historyPid ||
-        !GLib.file_test(`/proc/${this._historyPid}`, GLib.FileTest.EXISTS)
-      ) {
-        this._commandPollerId = null;
-        return GLib.SOURCE_REMOVE;
-      }
-      if (!GLib.file_test(cmdPath, GLib.FileTest.EXISTS))
-        return GLib.SOURCE_CONTINUE;
-      const file = Gio.File.new_for_path(cmdPath);
-      file.load_contents_async(null, async (source, result) => {
-        try {
-          const [, contents] = source.load_contents_finish(result);
-          if (!contents) return;
-          const text = new TextDecoder().decode(contents).trim();
-          if (!text) return;
-          // Clear file immediately
-          GLib.file_set_contents(cmdPath, "");
-          for (const line of text.split("\n")) {
-            if (!line.trim()) continue;
-            try {
-              const cmd = JSON.parse(line);
-              const topicUrl = cmd.topicUrl;
-              if (cmd.cmd === "markRead") {
-                await notificationStore.markRead(topicUrl, cmd.id);
-              } else if (cmd.cmd === "delete") {
-                await notificationStore.deleteNotification(topicUrl, cmd.id);
-              } else if (cmd.cmd === "mute") {
-                this.mute(topicUrl, 3600);
-              } else if (cmd.cmd === "unmute") {
-                this.unmute(topicUrl);
-              } else if (cmd.cmd === "markAllRead") {
-                await notificationStore.markAllRead(topicUrl);
-              } else if (cmd.cmd === "deleteAll") {
-                const all = await notificationStore.load(topicUrl);
-                for (const n of all)
-                  await notificationStore.deleteNotification(topicUrl, n.id);
-              } else if (cmd.cmd === "publish") {
-                await this._publishFromCommand(cmd);
-              }
-            } catch (e) {
-              /* skip */
-            }
-          }
-        } catch (e) {
-          /* ignore */
-        }
-      });
-      return GLib.SOURCE_CONTINUE;
-    });
   }
 
   /**
-   * Publish on behalf of the history dialog (command-file driven). Reads
+   * Publish on behalf of the history dialog (D-Bus driven). Reads
    * server URL, API key and TLS policy live from settings so the dialog
    * never needs its own HTTP stack.
    */
