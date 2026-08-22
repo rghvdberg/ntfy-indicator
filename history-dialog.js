@@ -2,7 +2,7 @@
 /**
  * Standalone GTK4 history dialog for ntfy extension.
  * Layout matches web app: topics sidebar left, messages right, publish entry bottom.
- * Args: serverUrl apiKey acceptSelfSigned initialTopic topic1,topic2,...
+ * Args: serverUrl initialTopic topic1,topic2,... muted extPath
  *
  * Copyright 2026 Rob van den Berg
  *
