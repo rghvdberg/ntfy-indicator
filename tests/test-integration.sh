@@ -148,8 +148,11 @@ fi
 
 echo "=== dbus: dialog service (shell exports, dialog calls) ==="
 # The extension owns com.github.rghvdberg.ntfy_indicator while enabled; the
-# history dialog sends actions to it. Drive the service directly with gdbus
-# and assert the store/settings effects. Runs before the lifecycle block so
+# history dialog sends actions to it. Drive the service directly with gdbus,
+# plus one assertion through a gjs client replicating the dialog's exact
+# call shape (Gio.DBusConnection.call needs exactly 10 arguments here —
+# fewer throw, which silently killed all dialog actions once).
+# Runs before the lifecycle block so
 # its persisted ids don't disturb earlier replay assertions.
 gs history-limit 100
 DEST=com.github.rghvdberg.ntfy_indicator
@@ -196,6 +199,35 @@ echo "$MT" | grep -q "$URL"; ok $? 0 "Mute writes muted-topics"
 dbus Unmute "'$URL'"
 MT=$(ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}gsettings get org.gnome.shell.extensions.ntfy-indicator muted-topics")
 ok "$MT" "'{}'" "Unmute clears muted-topics"
+
+echo "--- dialog-style client call (Gio.DBusConnection.call arg-count regression) ---"
+IDC=$(pub "client read me" "client-read")
+sleep 5
+ok "$(q new $IDC)" 1 "pre: client-call target unread"
+ssh "${SSH_OPTS[@]}" "$TARGET" "cat > /tmp/ntfy-dbus-client.js" <<'EOF'
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+
+const [topicUrl, id] = ARGV;
+// Mirrors history-dialog.js _sendCommand exactly.
+Gio.DBus.session.call(
+  'com.github.rghvdberg.ntfy_indicator',
+  '/com/github/rghvdberg/ntfy_indicator/service',
+  'com.github.rghvdberg.ntfy_indicator.Service',
+  'MarkRead',
+  new GLib.Variant('(ss)', [topicUrl, id]),
+  null,
+  Gio.DBusCallFlags.NONE,
+  -1,
+  null,
+  null
+);
+print('sent');
+EOF
+CLIENT_OUT=$(ssh "${SSH_OPTS[@]}" "$TARGET" "${VM_ENV}gjs -m /tmp/ntfy-dbus-client.js '$URL' '$IDC'")
+ok "$CLIENT_OUT" "sent" "dialog-style call dispatches without throwing"
+sleep 2
+ok "$(q new $IDC)" 0 "dialog-style MarkRead marks row read"
 
 ssh "${SSH_OPTS[@]}" "$TARGET" "pkill -f 'history-dialo[g].js' || true"
 

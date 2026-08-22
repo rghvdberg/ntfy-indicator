@@ -744,6 +744,9 @@ export async function main() {
     // === IPC: D-Bus calls into the shell's dialog service (void replies) ===
     function _sendCommand(method, args = [], types = "") {
       try {
+        // 10 arguments exactly: bus, path, iface, method, params, reply type,
+        // flags, timeout, cancellable, user data. Fewer args throw on this
+        // GJS even in await/promise form.
         Gio.DBus.session.call(
           DBUS_NAME,
           DBUS_PATH,
@@ -753,6 +756,7 @@ export async function main() {
           null,
           Gio.DBusCallFlags.NONE,
           -1,
+          null,
           null
         );
       } catch (e) {
