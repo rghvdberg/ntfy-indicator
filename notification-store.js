@@ -18,7 +18,7 @@
 
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import { getNotificationFile, getDataDir, getCacheDir, debugLog } from './utils.js';
+import { getNotificationFile, getDataDir, debugLog } from './utils.js';
 import { attachmentDownloader } from './attachment-downloader.js';
 
 /**
@@ -28,7 +28,6 @@ import { attachmentDownloader } from './attachment-downloader.js';
 export class NotificationStore {
   constructor() {
     this.dataDir = getDataDir();
-    this.cacheDir = getCacheDir();
     this._onChange = null;
     this._pendingWrites = {};
   }
@@ -51,7 +50,6 @@ export class NotificationStore {
 
   _ensureDataDir() {
     GLib.mkdir_with_parents(this.dataDir, 0o755);
-    GLib.mkdir_with_parents(this.cacheDir, 0o755);
   }
 
   _readFile(file) {
