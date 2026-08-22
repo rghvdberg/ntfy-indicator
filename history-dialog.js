@@ -554,7 +554,7 @@ export async function main() {
         box.append(msgLabel);
       }
 
-      const tags = (m.tags || []).filter((t) => !t.match(/^[a-z_]+$/));
+      const tags = m.tags || [];
       if (tags.length > 0) {
         tagsLabel = new Gtk.Label({
           label: `Tags: ${tags.join(", ")}`,
