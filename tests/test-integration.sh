@@ -93,6 +93,14 @@ sleep 8
 ok "$(q rows)" 51 "burst: 51 rows"
 ok "$(q unread)" 51 "burst: 51 unread"
 
+echo "=== muted topic: stored + counted, not dropped ==="
+gs muted-topics "{\"$URL\": 9999999999}"
+IDM=$(pub "muted msg" "muted")
+sleep 5
+ok "$(q has $IDM)" 1 "muted message stored (not dropped)"
+ok "$(q new $IDM)" 1 "muted message counted as unread"
+gs muted-topics "{}"
+
 echo "=== history limit trim ==="
 gs history-limit 10
 gs channels "@as []"; sleep 2; gs channels "['$TOPIC']"; sleep 3
