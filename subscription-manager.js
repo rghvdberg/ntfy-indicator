@@ -465,7 +465,7 @@ export class SubscriptionManager {
     if (cmd.filePath) {
       const file = Gio.File.new_for_path(cmd.filePath);
       const [, bytes] = await new Promise((resolve, reject) =>
-        file.load_contents_async(GLib.PRIORITY_DEFAULT, null, (f, r) => {
+        file.load_contents_async(null, (f, r) => {
           try {
             resolve(f.load_contents_finish(r));
           } catch (e) {
