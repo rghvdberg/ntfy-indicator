@@ -600,9 +600,14 @@ export async function main() {
               `[history] Non-image attachment: ${att.name}, type: ${att.type}, url: ${attUrl}`,
             );
           const attBtn = new Gtk.Button({
-            label: `\uD83D\uDCCE ${attText}`,
             halign: Gtk.Align.START,
           });
+          const attBtnBox = new Gtk.Box({ spacing: 6 });
+          attBtnBox.append(
+            new Gtk.Image({ icon_name: "mail-attachment-symbolic" }),
+          );
+          attBtnBox.append(new Gtk.Label({ label: attText }));
+          attBtn.set_child(attBtnBox);
           attBtn.connect("clicked", () => {
             const cachePath = attachmentDownloader.getCachedAttachment(
               att,
@@ -625,7 +630,7 @@ export async function main() {
         } else if (!attUrl) {
           box.append(
             new Gtk.Label({
-              label: `\uD83D\uDCCE ${attText}`,
+              label: attText,
               halign: Gtk.Align.START,
               css_classes: ["caption"],
             }),
