@@ -21,13 +21,7 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 
-import {
-  debugLog,
-  parseTopicUrl,
-  getDataDir,
-  getNotificationFile,
-  getCacheDir,
-} from "./utils.js";
+import { debugLog, parseTopicUrl, getNotificationFile } from "./utils.js";
 import { attachmentDownloader } from "./attachment-downloader.js";
 
 // Guard name `debug` is what shexli recognizes for gated console.* calls
@@ -57,7 +51,7 @@ export async function main() {
     return 1;
   }
 
-  const [serverUrl, initialTopic, topicsArg, mutedArg] = args;
+  const [serverUrl, initialTopic, topicsArg, mutedArg, extPath] = args;
   const isMutedInitially = mutedArg === "true";
   const globalBaseUrl = serverUrl.replace(/\/$/, "");
 
@@ -76,7 +70,7 @@ export async function main() {
   const allTopics = _parsed.map((p) => p.topic);
   const topicUrlMap = {};
   for (const p of _parsed) topicUrlMap[p.topic] = p.topicUrl;
-  const extDir = GLib.build_filenamev([
+  const extDir = extPath || GLib.build_filenamev([
     GLib.get_home_dir(),
     ".local",
     "share",
@@ -143,9 +137,15 @@ export async function main() {
     const readAllAction = new Gio.SimpleAction({ name: "readall" });
     readAllAction.connect("activate", () => {
       // The shell-side poller persists the store; the file monitor repaints
-      // the rows from it.
+      // the rows from it. Update the visible rows locally too so the tick
+      // marks disappear immediately (the store's ids are unchanged by a
+      // mark-all-read, so the monitor's id-dedup short-circuit skips a repaint).
       _sendCommand("markAllRead");
       _setTopicCount(currentTopic, 0);
+      for (const row of _rowById.values()) {
+        if (row._dotLabel) row._dotLabel.get_parent().remove(row._dotLabel);
+        if (row._readBtn) row._readBtn.set_visible(false);
+      }
     });
     actions.add_action(readAllAction);
 
@@ -476,6 +476,7 @@ export async function main() {
         dotLabel.set_markup('<span foreground="#338574">\u25CF</span>');
         headerBox.append(dotLabel);
       }
+      row._dotLabel = dotLabel;
 
       headerBox.append(new Gtk.Label({ hexpand: true }));
 
@@ -496,6 +497,7 @@ export async function main() {
         readBtn.set_visible(false);
       });
       headerBox.append(readBtn);
+      row._readBtn = readBtn;
 
       const delBtn = new Gtk.Button({
         label: "\u2715",
@@ -1118,5 +1120,5 @@ export async function main() {
   app.run([]);
 }
 
-if (typeof ARGV !== "undefined" && ARGV.length >= 6)
+if (typeof ARGV !== "undefined" && ARGV.length >= 4)
   main().catch((e) => debugLog("[history] main failed:", e));

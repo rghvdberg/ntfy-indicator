@@ -28,7 +28,7 @@ import './history-dialog.js';
 export default class NtfyExtension extends Extension {
   enable() {
     this._settings = this.getSettings();
-    initSubscriptionManager(this._settings);
+    initSubscriptionManager(this._settings, this.path);
     this._indicator = new Indicator(this._settings, this);
     Main.panel.addToStatusArea(this.uuid, this._indicator);
     debugLog('Extension enabled');

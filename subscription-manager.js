@@ -42,8 +42,9 @@ function _openUrl(url) {
  * Handles subscribing/unsubscribing to topics and delivering notifications
  */
 export class SubscriptionManager {
-  constructor(settings) {
+  constructor(settings, extPath) {
     this.settings = settings;
+    this.extPath = extPath;
     this.subscriptions = {}; // Map of topicUrl -> subscription
     this._historyPid = null;
     this._historyTopic = null;
@@ -196,11 +197,11 @@ export class SubscriptionManager {
       return;
     }
     if (msg.event !== "message") return;
-    // Check if muted
+    // Mute only suppresses the desktop banner; messages are still stored,
+    // counted and the resume watermark advances (matches the web app).
     const mutedTopics = this._parseMutedTopics();
-    if (mutedTopics[topicUrl] && mutedTopics[topicUrl] > Date.now() / 1000) {
-      return; // Still muted
-    }
+    const isMuted =
+      mutedTopics[topicUrl] && mutedTopics[topicUrl] > Date.now() / 1000;
 
     // Add to store (returns false if duplicate or seen)
     const added = await notificationStore.addNotification(
@@ -215,7 +216,7 @@ export class SubscriptionManager {
     // Advance the resume watermark regardless
     await notificationStore.setLastMessageId(topicUrl, msg.id);
 
-    if (!added) return;
+    if (!added || isMuted) return;
 
     // Show notification
     try {
@@ -327,15 +328,7 @@ export class SubscriptionManager {
     const isMuted =
       mutedTopics[topicUrl] && mutedTopics[topicUrl] > Date.now() / 1000;
 
-    const extDir = GLib.build_filenamev([
-      GLib.get_home_dir(),
-      ".local",
-      "share",
-      "gnome-shell",
-      "extensions",
-      "ntfy-indicator@rghvdberg",
-    ]);
-    const scriptPath = GLib.build_filenamev([extDir, "history-dialog.js"]);
+    const scriptPath = GLib.build_filenamev([this.extPath, "history-dialog.js"]);
 
     try {
       const launcher = new Gio.SubprocessLauncher({});
@@ -372,6 +365,7 @@ export class SubscriptionManager {
         topic,
         this.settings.get_strv("channels").join(","),
         String(isMuted),
+        this.extPath,
       ]);
       this._historyProc = proc;
       this._historyPid = proc.get_identifier();
@@ -532,8 +526,8 @@ export let subscriptionManager = null;
  * Initialize subscription manager
  * @param {object} settings - GSettings object
  */
-export function initSubscriptionManager(settings) {
-  subscriptionManager = new SubscriptionManager(settings);
+export function initSubscriptionManager(settings, extPath) {
+  subscriptionManager = new SubscriptionManager(settings, extPath);
   return subscriptionManager;
 }
 
