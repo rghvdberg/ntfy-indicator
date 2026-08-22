@@ -54,6 +54,16 @@ This is a known upstream issue — `tree-sitter` 0.25.1/0.25.2 analyze extension
 cleanly and repeatably; 0.26.0 crashes (memory corruption, symptom location
 varies per run). Not a bug in this extension.
 
+### Known false positive: EGO-P-007 on history-dialog.js
+
+shexli reports `history-dialog.js` as unreachable because its reachability
+walker only recognizes `Gio.Subprocess.new`, `GLib.spawn_command_line_*`,
+`GLib.spawn_async*` and `Shell.Util.*` spawn forms — not the
+`Gio.SubprocessLauncher.spawnv` call we use (nor an absolute `/usr/bin/gjs`
+argv[0]). The dialog is spawned as a subprocess from subscription-manager.js
+and ships in the zip on purpose. shexli exits 0 regardless of findings, so
+this single warning can be ignored; any other finding needs a look.
+
 ## CI Packaging (extensions.gnome.org)
 
 `gnome-extensions pack` (as wrapped by the CI action) only includes standard
