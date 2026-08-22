@@ -19,6 +19,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import { getNotificationFile, getDataDir, getCacheDir, debugLog } from './utils.js';
+import { attachmentDownloader } from './attachment-downloader.js';
 
 /**
  * NotificationStore class
@@ -28,7 +29,6 @@ export class NotificationStore {
   constructor() {
     this.dataDir = getDataDir();
     this.cacheDir = getCacheDir();
-    this._ensureDataDir();
     this._onChange = null;
     this._pendingWrites = {};
   }
@@ -85,6 +85,13 @@ export class NotificationStore {
     const sorted = limit == null
       ? notifications
       : notifications.sort((a, b) => b.time - a.time).slice(0, limit);
+    // Cache is bounded by store lifetime: delete the cached attachment of any
+    // notification trimmed out of history (the trim only happens when `limit`
+    // is set — the history-limit path).
+    if (limit != null) {
+      for (const removed of notifications.slice(limit))
+        attachmentDownloader.deleteCached(removed);
+    }
     const data = {
       topic: topicUrl,
       notifications: sorted,
@@ -190,7 +197,9 @@ export class NotificationStore {
       const data = (await this._readData(topicUrl)) || {};
       const notifications = data.notifications || [];
       const idx = notifications.findIndex(n => n.id === notificationId);
-      if (idx !== -1) notifications.splice(idx, 1);
+      const removed = idx !== -1 ? notifications.splice(idx, 1) : [];
+      if (removed.length)
+        attachmentDownloader.deleteCached(removed[0]);
       const seenIds = data.seenIds || [];
       if (!seenIds.includes(notificationId)) seenIds.push(notificationId);
       await this._persist(topicUrl, notifications, seenIds, data.lastId || null, null);
@@ -202,6 +211,38 @@ export class NotificationStore {
   async getUnreadCount(topicUrl) {
     const notifications = await this.load(topicUrl);
     return notifications.filter(n => n.new !== false).length;
+  }
+
+  /**
+   * Delete cached attachments no longer referenced by any store file. Runs
+   * once per session; ongoing trimming/deletion keep the cache bounded after.
+   */
+  async sweepOrphanedAttachments() {
+    const dir = Gio.File.new_for_path(this.dataDir);
+    if (!dir.query_exists(null)) return;
+    const live = [];
+    const enumerator = dir.enumerate_children(
+      'standard::name',
+      Gio.FileQueryInfoFlags.NONE,
+      null,
+    );
+    let info;
+    while ((info = enumerator.next_file(null)) !== null) {
+      if (!info.get_name().endsWith('.json')) continue;
+      const contents = await this._readFile(
+        Gio.File.new_for_path(GLib.build_filenamev([this.dataDir, info.get_name()])),
+      );
+      if (!contents) continue;
+      try {
+        const data = JSON.parse(new TextDecoder('utf-8').decode(contents));
+        if (data && data.notifications)
+          for (const n of data.notifications) live.push(n);
+      } catch (e) {
+        /* skip malformed store */
+      }
+    }
+    enumerator.close(null);
+    attachmentDownloader.sweepCache(live);
   }
 
 }

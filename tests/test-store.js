@@ -1,11 +1,13 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import { NotificationStore } from '../notification-store.js';
+import { attachmentDownloader } from '../attachment-downloader.js';
 import { getDataDir, getNotificationFile } from '../utils.js';
 import { assert, runMain } from './helpers.js';
 
 const store = new NotificationStore();
 const n = (id, time = 0) => ({ id, time, event: 'message', topic: 't', message: `msg ${id}`, new: true });
+const na = (id, time = 0) => ({ ...n(id, time), attachment: { name: 'att.txt', url: 'https://x/att.txt' } });
 
 async function main() {
   // add / dedupe
@@ -156,6 +158,39 @@ async function main() {
   rows = await store.load('hl-markover');
   assert(rows.length === 10, 'markover: markRead does NOT trim (still 10)');
   assert(rows.find(r => r.id === 'm91').new === false, 'markover: marked read');
+
+  // ===== Attachment cache cleanup (A/D): bounded by store lifetime =====
+  const cacheDir = attachmentDownloader.cacheDir;
+  const writeCache = (id, name) => {
+    const p = GLib.build_filenamev([cacheDir, `${id}_${name}`]);
+    GLib.mkdir_with_parents(cacheDir, 0o755);
+    GLib.file_set_contents(p, 'x');
+    return p;
+  };
+  const exists = (p) => Gio.File.new_for_path(p).query_exists(null);
+
+  // delete removes the cached attachment
+  const pDel = writeCache('dc1', 'att.txt');
+  await store.addNotification('tl-cache', na('dc1', 1), 100);
+  assert(exists(pDel), 'cache: file written');
+  await store.deleteNotification('tl-cache', 'dc1');
+  assert(!exists(pDel), 'cache: delete removes cached attachment');
+
+  // history-limit trim removes the cached attachment of the trimmed row
+  const pOld = writeCache('dc2', 'att.txt');
+  const pNew = writeCache('dc3', 'att.txt');
+  await store.addNotification('tl-trim', na('dc2', 1), 1);
+  await store.addNotification('tl-trim', na('dc3', 2), 1);
+  assert(!exists(pOld), 'cache: trimmed row attachment removed');
+  assert(exists(pNew), 'cache: kept row attachment retained');
+
+  // orphan sweep removes files with no matching live notification
+  const pLive = writeCache('dc4', 'att.txt');
+  const pOrphan = writeCache('ghost99', 'att.txt');
+  await store.addNotification('tl-sweep', na('dc4', 1), 100);
+  await store.sweepOrphanedAttachments();
+  assert(exists(pLive), 'cache: sweep retains live attachment');
+  assert(!exists(pOrphan), 'cache: sweep removes orphaned attachment');
 }
 
 runMain(main);

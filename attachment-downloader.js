@@ -26,7 +26,6 @@ import { debugLog, getCacheDir } from './utils.js';
 export class AttachmentDownloader {
   constructor() {
     this.cacheDir = getCacheDir();
-    this._ensureCacheDir();
   }
 
   _ensureCacheDir() {
@@ -56,6 +55,7 @@ export class AttachmentDownloader {
    * @param {(path: string|null) => void} cb - Called with cache path or null
    */
   _downloadFile(url, cachePath, acceptSelfSigned, apiKey, cb) {    try {
+      this._ensureCacheDir();
       const session = new Soup.Session();
       const msg = Soup.Message.new('GET', url);
 
@@ -97,6 +97,55 @@ export class AttachmentDownloader {
   _resolveCachePath(attachment, notificationId) {
     if (!attachment || !attachment.url) return null;
     return this._cachePath(notificationId, attachment.name || 'attachment');
+  }
+
+  /**
+   * Delete the cached file for a single removed notification. No-op if the
+   * notification has no attachment or the file is already gone.
+   * @param {object} notification - Notification with `id` and (optionally) `attachment`
+   */
+  deleteCached(notification) {
+    const cachePath = this._resolveCachePath(notification?.attachment, notification?.id);
+    if (!cachePath) return;
+    const file = Gio.File.new_for_path(cachePath);
+    if (file.query_exists(null)) {
+      try {
+        file.delete(null);
+      } catch (e) {
+        debugLog('[dl] Failed to delete cached attachment:', e.message);
+      }
+    }
+  }
+
+  /**
+   * Delete every cache file not referenced by `liveNotifications`. Keeps the
+   * cache bounded to exactly what's still in the store (orphan sweep).
+   * @param {Array<object>} liveNotifications - All notifications still held in the store
+   */
+  sweepCache(liveNotifications) {
+    const dir = Gio.File.new_for_path(this.cacheDir);
+    if (!dir.query_exists(null)) return;
+    const expected = new Set();
+    for (const n of liveNotifications) {
+      const p = this._resolveCachePath(n.attachment, n.id);
+      if (p) expected.add(p);
+    }
+    const enumerator = dir.enumerate_children(
+      'standard::name',
+      Gio.FileQueryInfoFlags.NONE,
+      null,
+    );
+    let info;
+    while ((info = enumerator.next_file(null)) !== null) {
+      const full = GLib.build_filenamev([this.cacheDir, info.get_name()]);
+      if (expected.has(full)) continue;
+      try {
+        Gio.File.new_for_path(full).delete(null);
+      } catch (e) {
+        debugLog('[dl] Failed to delete orphaned cache:', e.message);
+      }
+    }
+    enumerator.close(null);
   }
 
   /**
