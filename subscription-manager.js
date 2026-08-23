@@ -70,6 +70,7 @@ export class SubscriptionManager {
     this.settings = settings;
     this.extPath = extPath;
     this.subscriptions = {}; // Map of topicUrl -> subscription
+    this._historyProc = null;
     this._historyPid = null;
     this._historyTopic = null;
     this._dbusNodeId = null;
