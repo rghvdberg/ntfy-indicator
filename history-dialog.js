@@ -20,37 +20,21 @@
 
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
+import Gtk from "gi://Gtk?version=4.0";
+import Adw from "gi://Adw?version=1";
+import Pango from "gi://Pango";
+import Gdk from "gi://Gdk?version=4.0";
+import GdkPixbuf from "gi://GdkPixbuf?version=2.0";
 
 import { debugLog, parseTopicUrl, getNotificationFile } from "./utils.js";
 import { attachmentDownloader } from "./attachment-downloader.js";
-
-// Guard name `debug` is what shexli recognizes for gated console.* calls
-const debug =
-  GLib.getenv("NTFY_DEBUG") !== null && GLib.getenv("NTFY_DEBUG") !== "0";
 
 // Shell-side service the dialog sends actions to (must match
 // subscription-manager.js)
 const DBUS_NAME = "com.github.rghvdberg.ntfy_indicator";
 const DBUS_PATH = "/com/github/rghvdberg/ntfy_indicator/service";
 
-// Loaded lazily so importing this module from the shell stays GTK-free
-let Gtk = null;
-let Adw = null;
-let Pango = null;
-let Gdk = null;
-let GdkPixbuf = null;
-
-async function _loadAppLibs() {
-  if (Gtk) return;
-  Gtk = (await import("gi://Gtk?version=4.0")).default;
-  Adw = (await import("gi://Adw?version=1")).default;
-  Pango = (await import("gi://Pango")).default;
-  Gdk = (await import("gi://Gdk?version=4.0")).default;
-  GdkPixbuf = (await import("gi://GdkPixbuf?version=2.0")).default;
-}
-
 export async function main() {
-  await _loadAppLibs();
 
   const args = ARGV;
   if (args.length < 4) {
