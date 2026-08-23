@@ -43,7 +43,9 @@ export class NotificationStore {
   _enqueue(topicUrl, work) {
     // Serialize writes per topic to prevent data loss from concurrent operations
     const prev = this._pendingWrites[topicUrl];
-    const promise = (prev || Promise.resolve()).then(work, work).catch(() => {});
+    const promise = (prev || Promise.resolve()).then(work, work).catch((e) => {
+      debugLog(`[ntfy] store work failed for ${topicUrl}:`, e);
+    });
     this._pendingWrites[topicUrl] = promise;
     return promise;
   }
@@ -103,7 +105,7 @@ export class NotificationStore {
   }
 
   _writeFile(file, contents) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       file.replace_contents_async(
         contents, null, false,
         Gio.FileCreateFlags.REPLACE_DESTINATION,
@@ -111,10 +113,10 @@ export class NotificationStore {
         (source, result) => {
           try {
             source.replace_contents_finish(result);
-            resolve(true);
+            resolve();
           } catch (e) {
             debugLog(`[ntfy] write failed: ${file.get_path()}:`, e);
-            resolve(false);
+            reject(e);
           }
         }
       );
@@ -212,12 +214,47 @@ export class NotificationStore {
   }
 
   /**
-   * Delete cached attachments no longer referenced by any store file. Runs
-   * once per session; ongoing trimming/deletion keep the cache bounded after.
+   * Delete store files for topics that are no longer in the channel list.
+   * History for removed subscriptions is discarded; run cache sweep afterwards
+   * so their attachments are cleaned up too.
    */
-  async sweepOrphanedAttachments() {
+  cleanupInactiveStores(activeTopicUrls) {
+    if (!activeTopicUrls || activeTopicUrls.length === 0) return;
     const dir = Gio.File.new_for_path(this.dataDir);
     if (!dir.query_exists(null)) return;
+    const activeFiles = new Set(
+      activeTopicUrls.map((url) => getNotificationFile(url)),
+    );
+    const enumerator = dir.enumerate_children(
+      'standard::name',
+      Gio.FileQueryInfoFlags.NONE,
+      null,
+    );
+    let info;
+    while ((info = enumerator.next_file(null)) !== null) {
+      const name = info.get_name();
+      if (!name.endsWith('.json')) continue;
+      const path = GLib.build_filenamev([this.dataDir, name]);
+      if (activeFiles.has(path)) continue;
+      try {
+        Gio.File.new_for_path(path).delete(null);
+      } catch (e) {
+        debugLog(`[ntfy] Failed to delete old store ${path}:`, e);
+      }
+    }
+    enumerator.close(null);
+  }
+
+  /**
+   * Delete cached attachments no longer referenced by an active store file.
+   * If activeTopicUrls is given, only store files for those topics are
+   * considered live; cache for removed-topic store files is purged.
+   * Runs once per session; ongoing trimming/deletion keep the cache bounded.
+   */
+  async sweepOrphanedAttachments(activeTopicUrls = null) {
+    const dir = Gio.File.new_for_path(this.dataDir);
+    if (!dir.query_exists(null)) return;
+    const active = activeTopicUrls ? new Set(activeTopicUrls) : null;
     const live = [];
     const enumerator = dir.enumerate_children(
       'standard::name',
@@ -233,6 +270,7 @@ export class NotificationStore {
       if (!contents) continue;
       try {
         const data = JSON.parse(new TextDecoder('utf-8').decode(contents));
+        if (active && !active.has(data.topic)) continue;
         if (data && data.notifications)
           for (const n of data.notifications) live.push(n);
       } catch (e) {
