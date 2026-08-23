@@ -37,6 +37,7 @@ const DBUS_PATH = "/com/github/rghvdberg/ntfy_indicator/service";
 let Gtk = null;
 let Adw = null;
 let Pango = null;
+let Gdk = null;
 let GdkPixbuf = null;
 
 async function _loadAppLibs() {
@@ -44,6 +45,7 @@ async function _loadAppLibs() {
   Gtk = (await import("gi://Gtk?version=4.0")).default;
   Adw = (await import("gi://Adw?version=1")).default;
   Pango = (await import("gi://Pango")).default;
+  Gdk = (await import("gi://Gdk?version=4.0")).default;
   GdkPixbuf = (await import("gi://GdkPixbuf?version=2.0")).default;
 }
 
@@ -87,6 +89,16 @@ export async function main() {
     return getNotificationFile(topicUrlMap[t]);
   }
 
+  function _loadStylesheet() {
+    const provider = new Gtk.CssProvider();
+    provider.load_from_path(GLib.build_filenamev([extDir, "stylesheet.css"]));
+    Gtk.StyleContext.add_provider_for_display(
+      Gdk.Display.get_default(),
+      provider,
+      Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+  }
+
   const PRIORITY_LABELS = [
     null, // 0-index unused
     { text: "▲▲", color: "#999" },
@@ -102,6 +114,7 @@ export async function main() {
   });
 
   app.connect("activate", () => {
+    _loadStylesheet();
     let currentTopic = initialTopic;
 
     const window = new Adw.ApplicationWindow({
@@ -647,23 +660,19 @@ export async function main() {
       msgListBox.insert(row, atTop ? 0 : -1);
     }
 
-    // Create an image preview like the ntfy webapp (Notifications.jsx): the
-    // image fills the row width (scales with the window), height is capped
-    // at 400px, cover-cropped, click opens the original image.
+    // Create an image preview like the ntfy webapp: the image fills the row
+    // width, height is capped at 400px, and click opens the original image.
+    // We still load a Pixbuf once to learn the aspect ratio (GTK CSS does not
+    // support max-height), but the visible image is rendered by Gtk.Picture.
     function _createImagePicture(cachePath) {
       try {
         const pixbuf = GdkPixbuf.Pixbuf.new_from_file(cachePath);
         const iw = pixbuf.get_width();
         const ih = pixbuf.get_height();
         if (iw <= 0 || ih <= 0) {
-          if (debug)
-            console.warn(
-              `[history] Invalid image dimensions ${iw}x${ih}: ${cachePath}`,
-            );
+          debugLog(`[history] Invalid image dimensions ${iw}x${ih}: ${cachePath}`);
           return null;
         }
-
-        const MAX_H = 400;
 
         const picture = new Gtk.Picture({
           hexpand: true,
@@ -675,51 +684,25 @@ export async function main() {
           css_classes: ["ntfy-image-preview"],
         });
         picture.set_pixbuf(pixbuf);
-        // Pin an initial height so freshly rebuilt rows never render
-        // 0-height/anatural-height images for a frame (which collapses the
-        // scrolled window and clamps the scroll to top); syncHeight
-        // re-derives the exact height from the real allocation on map.
-        let estW = msgListBox.get_width() - 24;
-        if (estW <= 0)
-          estW = mainVbox.get_width() > 0 ? mainVbox.get_width() : 300;
+
+        const MAX_H = 400;
+        // Initial fallback height so the row doesn't collapse before mapping.
         picture.set_size_request(
           0,
-          Math.max(1, Math.min(MAX_H, Math.round(estW * (ih / iw)))),
+          Math.min(MAX_H, Math.max(100, Math.round(300 * (ih / iw)))),
         );
-
-        // No GTK4 size-allocate signal, so sync the height to the
-        // allocated width while mapped (objectFit: cover + maxHeight).
-        let lastH = -1;
-        let syncTimer = 0;
-        const syncHeight = () => {
+        // On map the real width is known; set the exact aspect-capped height.
+        picture.connect("map", () => {
           const w = picture.get_width();
           if (w > 0) {
             const h = Math.max(1, Math.min(MAX_H, Math.round(w * (ih / iw))));
-            if (h !== lastH) {
-              lastH = h;
-              // Pin height only (min width 0) → no window min-width lock.
-              picture.set_size_request(0, h);
-            }
-          }
-        };
-        picture.connect("map", () => {
-          syncHeight();
-          syncTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
-            if (!picture.get_mapped()) return GLib.SOURCE_REMOVE;
-            syncHeight();
-            return GLib.SOURCE_CONTINUE;
-          });
-        });
-        picture.connect("unmap", () => {
-          if (syncTimer) {
-            GLib.source_remove(syncTimer);
-            syncTimer = 0;
+            picture.set_size_request(0, h);
           }
         });
 
         const gesture = Gtk.GestureClick.new();
         gesture.set_button(1); // Left click only
-        gesture.connect("released", (_gesture, n_press, _x, _y) => {
+        gesture.connect("released", (_gesture, n_press) => {
           if (n_press > 1) return;
           try {
             Gio.AppInfo.launch_default_for_uri(
@@ -727,16 +710,14 @@ export async function main() {
               null,
             );
           } catch (e) {
-            if (debug)
-              console.error(`[history] Open image failed: ${e.message}`);
+            debugLog(`[history] Open image failed: ${e.message}`);
           }
         });
         picture.add_controller(gesture);
 
         return picture;
       } catch (e) {
-        if (debug)
-          console.error(`[history] Failed to load image: ${e.message}`);
+        debugLog(`[history] Failed to load image: ${e.message}`);
         return null;
       }
     }
@@ -895,7 +876,7 @@ export async function main() {
     function _doPublish() {
       const text = publishEntry.get_text().trim();
       if (!text) return;
-      _sendCommand("Publish", [text, "", {}], "ss a{ss}");
+      _sendCommand("Publish", [text, "", {}], "ssa{ss}");
       publishEntry.set_text("");
     }
 
@@ -1064,7 +1045,7 @@ export async function main() {
         _sendCommand(
           "Publish",
           [text, attachFilePath ?? "", headers],
-          "ss a{ss}"
+          "ssa{ss}"
         );
         dlg.close();
       });
