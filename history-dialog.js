@@ -409,30 +409,12 @@ export async function main() {
       if (inDownloads) path = inDownloads;
       debugLog(`[history] Opening attachment: ${path}`);
       try {
-        const file = Gio.File.new_for_path(path);
-        const appInfo = Gio.AppInfo.get_default_for_type(
-          "application/octet-stream",
-          false,
-        );
-        if (appInfo) {
-          try {
-            appInfo.launch([file], null);
-            return;
-          } catch (e) {
-            /* fall through to default app */
-          }
-        }
-      } catch (e) {
-        /* fall through to default app */
-      }
-      try {
         Gio.AppInfo.launch_default_for_uri(
           Gio.File.new_for_path(path).get_uri(),
           null,
         );
       } catch (e) {
-        if (debug)
-          console.error(`[history] Failed to open attachment: ${e.message}`);
+        debugLog(`[history] Failed to open attachment: ${e.message}`);
       }
     }
 
