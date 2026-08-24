@@ -50,38 +50,29 @@ export class NotificationStore {
     return promise;
   }
 
-  _ensureDataDir() {
-    GLib.mkdir_with_parents(this.dataDir, 0o755);
-  }
-
-  _readFile(file) {
+  
+  _readData(topicUrl) {
+    const file = Gio.File.new_for_path(getNotificationFile(topicUrl));
+    if (!file.query_exists(null)) return Promise.resolve(null);
     return new Promise((resolve) => {
       file.load_contents_async(null, (source, result) => {
         try {
           const [success, contents] = source.load_contents_finish(result);
-          resolve(success ? contents : null);
+          if (!success || !contents) {
+            resolve(null);
+            return;
+          }
+          resolve(JSON.parse(new TextDecoder('utf-8').decode(contents)));
         } catch (e) {
+          debugLog(`Failed to load ${topicUrl}:`, e);
           resolve(null);
         }
       });
     });
   }
 
-  async _readData(topicUrl) {
-    const file = Gio.File.new_for_path(getNotificationFile(topicUrl));
-    if (!file.query_exists(null)) return null;
-    try {
-      const contents = await this._readFile(file);
-      if (!contents) return null;
-      return JSON.parse(new TextDecoder('utf-8').decode(contents));
-    } catch (e) {
-      debugLog(`Failed to load ${topicUrl}:`, e);
-      return null;
-    }
-  }
-
   async _persist(topicUrl, notifications, seenIds, lastId, limit) {
-    this._ensureDataDir();
+    GLib.mkdir_with_parents(this.dataDir, 0o755);
     const sorted = limit == null
       ? notifications
       : notifications.sort((a, b) => b.time - a.time).slice(0, limit);
@@ -264,9 +255,17 @@ export class NotificationStore {
     let info;
     while ((info = enumerator.next_file(null)) !== null) {
       if (!info.get_name().endsWith('.json')) continue;
-      const contents = await this._readFile(
-        Gio.File.new_for_path(GLib.build_filenamev([this.dataDir, info.get_name()])),
-      );
+      const file = Gio.File.new_for_path(GLib.build_filenamev([this.dataDir, info.get_name()]));
+      const contents = await new Promise((resolve) => {
+        file.load_contents_async(null, (source, result) => {
+          try {
+            const [success, contents] = source.load_contents_finish(result);
+            resolve(success ? contents : null);
+          } catch (e) {
+            resolve(null);
+          }
+        });
+      });
       if (!contents) continue;
       try {
         const data = JSON.parse(new TextDecoder('utf-8').decode(contents));

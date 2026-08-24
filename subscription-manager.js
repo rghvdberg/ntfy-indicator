@@ -25,17 +25,6 @@ import { notificationStore } from "./notification-store.js";
 import { attachmentDownloader } from "./attachment-downloader.js";
 import { getApiKey, parseTopicUrl, debugLog } from "./utils.js";
 
-/**
- * Open a URL in the default browser without shell interpolation
- * (user/publisher-controlled input must never reach a shell string).
- */
-function _openUrl(url) {
-  try {
-    Gio.AppInfo.launch_default_for_uri(url, null);
-  } catch (e) {
-    debugLog(`[ntfy] Failed to open URL ${url}:`, e);
-  }
-}
 
 /**
  * D-Bus endpoint the history dialog process calls into. All actions execute
@@ -94,27 +83,30 @@ export class SubscriptionManager {
    * void and failures logged. destroy() releases name and export.
    */
   _exportDbusService() {
-    const guard = (p) =>
-      Promise.resolve(p).catch((e) =>
-        debugLog("[ntfy] D-Bus action failed:", e),
-      );
     const handlers = {
-      MarkRead: (topicUrl, id) => guard(notificationStore.markRead(topicUrl, id)),
+      MarkRead: (topicUrl, id) =>
+        Promise.resolve(notificationStore.markRead(topicUrl, id))
+          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
       Delete: (topicUrl, id) =>
-        guard(notificationStore.deleteNotification(topicUrl, id)),
-      MarkAllRead: (topicUrl) => guard(notificationStore.markAllRead(topicUrl)),
+        Promise.resolve(notificationStore.deleteNotification(topicUrl, id))
+          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
+      MarkAllRead: (topicUrl) =>
+        Promise.resolve(notificationStore.markAllRead(topicUrl))
+          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
       DeleteAll: (topicUrl) =>
-        guard(
+        Promise.resolve(
           notificationStore.load(topicUrl).then((all) =>
             Promise.all(
               all.map((n) => notificationStore.deleteNotification(topicUrl, n.id)),
             ),
           ),
-        ),
+        )
+          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
       Mute: (topicUrl) => this.mute(topicUrl, 3600),
       Unmute: (topicUrl) => this.unmute(topicUrl),
       Publish: (topicUrl, message, filePath, headers) =>
-        guard(this._publishFromCommand({ topicUrl, message, filePath, headers })),
+        Promise.resolve(this._publishFromCommand({ topicUrl, message, filePath, headers }))
+          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
     };
     this._dbusExport = Gio.DBusExportedObject.wrapJSObject(SERVICE_XML, handlers);
     this._dbusNodeId = Gio.bus_own_name(
@@ -361,10 +353,10 @@ export class SubscriptionManager {
       // Priority: click URL > attachment URL > history dialog
       if (msg.click) {
         debugLog(`[ntfy] Opening click URL: ${msg.click}`);
-        _openUrl(msg.click);
+        Gio.AppInfo.launch_default_for_uri(msg.click, null);
       } else if (msg.attach) {
         debugLog(`[ntfy] Opening attachment: ${msg.attach}`);
-        _openUrl(msg.attach);
+        Gio.AppInfo.launch_default_for_uri(msg.attach, null);
       } else {
         debugLog(`[ntfy] Opening history for topic: ${topic}`);
         this._openHistoryDialog(topic, serverUrl);
@@ -480,14 +472,9 @@ export class SubscriptionManager {
     }
   }
 
-  /**
-   * Parse muted topics from settings
-   * @returns {object} Map of topicUrl -> mute expiry timestamp
-   */
   _parseMutedTopics() {
     try {
-      const mutedStr = this.settings.get_string("muted-topics");
-      return JSON.parse(mutedStr);
+      return JSON.parse(this.settings.get_string("muted-topics")) || {};
     } catch (e) {
       return {};
     }

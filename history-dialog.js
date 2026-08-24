@@ -398,19 +398,16 @@ export async function main() {
         );
         return dest;
       } catch (e) {
-        if (debug)
-          console.error(`[history] Copy to Downloads failed: ${e.message}`);
+        /* copy to Downloads failed */
         return null;
       }
     }
 
     function _openAttachment(path, displayName = null) {
-      const inDownloads = _copyToDownloads(path, displayName);
-      if (inDownloads) path = inDownloads;
-      debugLog(`[history] Opening attachment: ${path}`);
+      const dest = _copyToDownloads(path, displayName);
       try {
         Gio.AppInfo.launch_default_for_uri(
-          Gio.File.new_for_path(path).get_uri(),
+          Gio.File.new_for_path(dest || path).get_uri(),
           null,
         );
       } catch (e) {
@@ -579,10 +576,6 @@ export async function main() {
 
         if (attUrl && !isImage) {
           // Non-image attachment: download and open with default app
-          if (debug)
-            console.warn(
-              `[history] Non-image attachment: ${att.name}, type: ${att.type}, url: ${attUrl}`,
-            );
           const attBtn = new Gtk.Button({
             halign: Gtk.Align.START,
           });
@@ -600,11 +593,11 @@ export async function main() {
             if (cachePath) {
               _openAttachment(cachePath, att.name || "attachment");
             } else {
-              if (debug) console.warn("[history] Not cached, opening URL");
+              /* not cached, opening URL */
               try {
                 Gio.AppInfo.launch_default_for_uri(attUrl, null);
               } catch (e) {
-                if (debug) console.error(`[history] Open failed: ${e.message}`);
+                /* open failed */
               }
             }
           });
@@ -707,7 +700,7 @@ export async function main() {
           null
         );
       } catch (e) {
-        if (debug) console.error(`[history] sendCommand failed: ${e.message}`);
+        /* sendCommand failed */
       }
     }
 
@@ -786,10 +779,7 @@ export async function main() {
           }
           debugLog(`[history] Added ${notifications.length} rows to listbox`);
         } catch (e) {
-          if (debug)
-            console.error(
-              `[history] Failed to load store for ${t}: ${e.message}`,
-            );
+          /* failed to load store */
         }
       });
     }
