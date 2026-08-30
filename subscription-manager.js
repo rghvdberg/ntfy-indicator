@@ -81,51 +81,41 @@ export class SubscriptionManager {
    * run here where the store, settings and HTTP policy live; replies are
    * void and failures logged. destroy() releases name and export.
    */
-  _exportDbusService() {
-    const handlers = {
-      MarkRead: (topicUrl, id) =>
-        Promise.resolve(notificationStore.markRead(topicUrl, id)).catch((e) =>
+_exportDbusService() {
+    this._dbusExport = Gio.DBusExportedObject.wrapJSObject(SERVICE_XML, {
+      MarkRead: (topicUrl, id) => {
+        notificationStore.markRead(topicUrl, id).catch((e) =>
           debugLog("[ntfy] D-Bus action failed:", e),
-        ),
-      Delete: (topicUrl, id) =>
-        Promise.resolve(
-          notificationStore.deleteNotification(topicUrl, id),
-        ).catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
-      MarkAllRead: (topicUrl) =>
-        Promise.resolve(notificationStore.markAllRead(topicUrl)).catch((e) =>
+        );
+      },
+      Delete: (topicUrl, id) => {
+        notificationStore.deleteNotification(topicUrl, id).catch((e) =>
           debugLog("[ntfy] D-Bus action failed:", e),
-        ),
-      DeleteAll: (topicUrl) =>
-        Promise.resolve(
-          notificationStore
-            .load(topicUrl)
-            .then((all) =>
-              Promise.all(
-                all.map((n) =>
-                  notificationStore.deleteNotification(topicUrl, n.id),
-                ),
-              ),
+        );
+      },
+      MarkAllRead: (topicUrl) => {
+        notificationStore.markAllRead(topicUrl).catch((e) =>
+          debugLog("[ntfy] D-Bus action failed:", e),
+        );
+      },
+      DeleteAll: (topicUrl) => {
+        notificationStore
+          .load(topicUrl)
+          .then((all) =>
+            Promise.all(
+              all.map((n) => notificationStore.deleteNotification(topicUrl, n.id)),
             ),
-        ).catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
+          )
+          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e));
+      },
       Mute: (topicUrl) => this.mute(topicUrl, 3600),
       Unmute: (topicUrl) => this.unmute(topicUrl),
-      Publish: (topicUrl, message, filePath, headers) =>
-        Promise.resolve(
-          this._publishFromCommand({ topicUrl, message, filePath, headers }),
-        ).catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
-    };
-    this._dbusExport = Gio.DBusExportedObject.wrapJSObject(
-      SERVICE_XML,
-      handlers,
-    );
-    this._dbusNodeId = Gio.bus_own_name(
-      Gio.BusType.SESSION,
-      DBUS_NAME,
-      Gio.BusNameOwnerFlags.NONE,
-      (conn) => this._dbusExport.export(conn, DBUS_PATH),
-      null,
-      () => debugLog("[ntfy] D-Bus name lost"),
-    );
+      Publish: (topicUrl, message, filePath, headers) => {
+        this._publishFromCommand({ topicUrl, message, filePath, headers }).catch(
+          (e) => debugLog("[ntfy] D-Bus action failed:", e),
+        );
+      },
+    });
   }
 
   /**
