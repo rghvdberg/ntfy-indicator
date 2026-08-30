@@ -147,17 +147,6 @@ export class SubscriptionManager {
 
     debugLog(`[SubscriptionManager] Subscribing to ${fullTopicUrl}`);
 
-    // Register synchronously so overlapping restarts can never orphan this
-    // attempt: until the real handle replaces it, any unsubscribeAll() hits
-    // the placeholder and marks it stale.
-    let stale = false;
-    const pending = {
-      cancel: () => {
-        stale = true;
-      },
-    };
-    this.subscriptions[fullTopicUrl] = pending;
-
     try {
       const accept = this.settings.get_boolean("accept-self-signed");
       const api = new NtfyApi(serverUrl, apiKey, accept);
@@ -167,15 +156,8 @@ export class SubscriptionManager {
       const since = await notificationStore.getLastMessageId(fullTopicUrl);
 
       debugLog(
-        `[SubscriptionManager] ${fullTopicUrl}: captured acceptSelfSigned=${accept}, since=${since ?? "null"}, stale=${stale}`,
+        `[SubscriptionManager] ${fullTopicUrl}: captured acceptSelfSigned=${accept}, since=${since ?? "null"}`,
       );
-
-      if (stale || this.subscriptions[fullTopicUrl] !== pending) {
-        debugLog(
-          `[SubscriptionManager] Subscribe to ${fullTopicUrl} superseded; aborting`,
-        );
-        return false;
-      }
 
       const subscription = api.subscribe(
         topic,
@@ -192,10 +174,6 @@ export class SubscriptionManager {
       this.subscriptions[fullTopicUrl] = subscription;
 
       return true;
-    } finally {
-      if (stale && this.subscriptions[fullTopicUrl] === pending) {
-        delete this.subscriptions[fullTopicUrl];
-      }
     }
   }
 
