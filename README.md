@@ -64,6 +64,12 @@ Open the extension preferences to configure:
 ## Requirements
 
 - GNOME Shell 50+
+- For nested shell development: `mutter-dev-bin` package (provides `mutter-devkit` for window display)
+
+```bash
+# Install development dependency for nested shell
+sudo apt install mutter-dev-bin
+```
 
 ## Development
 
