@@ -120,14 +120,14 @@ export const Indicator = GObject.registerClass(
         },
       );
 
-      notificationStore.setOnChange(() => {
+      notificationStore._onChange = () => {
         this._rebuildMenu().catch((e) =>
           debugLog("[ntfy] _rebuildMenu failed:", e),
         );
         this._updateButtonText().catch((e) =>
           debugLog("[ntfy] _updateButtonText failed:", e),
         );
-      });
+      };
     }
 
     _startSubscriptions() {
@@ -165,7 +165,7 @@ export const Indicator = GObject.registerClass(
     destroy() {
       if (this._settingsChangedId)
         this.settings.disconnect(this._settingsChangedId);
-      notificationStore.setOnChange(null);
+      notificationStore._onChange = null;
       subscriptionManager.unsubscribeAll();
       super.destroy();
     }

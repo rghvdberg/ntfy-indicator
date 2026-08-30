@@ -32,14 +32,6 @@ export class NotificationStore {
     this._pendingWrites = {};
   }
 
-  setOnChange(cb) {
-    this._onChange = cb;
-  }
-
-  _notify() {
-    if (this._onChange) this._onChange();
-  }
-
   _enqueue(topicUrl, work) {
     // Serialize writes per topic to prevent data loss from concurrent operations
     const prev = this._pendingWrites[topicUrl];
@@ -157,7 +149,7 @@ export class NotificationStore {
         data.lastId || null,
         limit,
       );
-      this._notify();
+      this._onChange?.();
       return true;
     });
   }
@@ -184,7 +176,7 @@ export class NotificationStore {
         data.lastId || null,
         null,
       );
-      this._notify();
+      this._onChange?.();
       return true;
     });
   }
@@ -205,7 +197,7 @@ export class NotificationStore {
         data.lastId || null,
         null,
       );
-      this._notify();
+      this._onChange?.();
     });
   }
 
@@ -225,7 +217,7 @@ export class NotificationStore {
         data.lastId || null,
         null,
       );
-      this._notify();
+      this._onChange?.();
       return true;
     });
   }
