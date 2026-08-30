@@ -4,7 +4,7 @@ This document describes the technical architecture of the ntfy GNOME Shell exten
 
 ## Project Overview
 
-A GNOME Shell 50 extension that brings ntfy push notifications to the desktop. It subscribes to configurable ntfy topics, shows desktop notifications, tracks unread counts in the panel, and provides a history dialog with publish/mute/mark-read/delete and image/attachment previews.
+A GNOME Shell extension that brings ntfy push notifications to the desktop. It subscribes to configurable ntfy topics, shows desktop notifications, tracks unread counts in the panel, and provides a history dialog with publish/mute/mark-read/delete and image/attachment previews.
 
 ## Environment Constraints
 
@@ -13,6 +13,8 @@ A GNOME Shell 50 extension that brings ntfy push notifications to the desktop. I
 ## Project Goal
 
 The extension should mirror the **ntfy web app** behavior: persistent local history, incremental resume, and never re-notifying a message that has already been seen.
+
+The extension must also pass the **EGO review guidelines** — it is a target for submission to [extensions.gnome.org](https://extensions.gnome.org). See [CONTRIBUTING.md](CONTRIBUTING.md) → EGO Review Compliance for the mandatory rules.
 
 ## How It Works
 
@@ -138,7 +140,7 @@ Configuration is env-driven via `tests/config.sh`:
 - `NTFY_TEST_SSH_KEY`
 
 ### VM Setup (Optional)
-- `tests/vm-create.sh` builds a GNOME 50 VM from the Ubuntu cloud image (cloud-init; auto-generates `tests/.vm-key`, gitignored)
+- `tests/vm-create.sh` builds a GNOME VM from the Ubuntu cloud image (cloud-init; auto-generates `tests/.vm-key`, gitignored)
 - `--fresh` recreates it
 - The VM is optional, used for manual testing or if nested shell doesn't work
 - Configuration is env-driven via `tests/config.sh`:
@@ -189,6 +191,3 @@ Before deploying:
 - [ ] Pass the **shexli check** (with pinned tree-sitter version)
 - [ ] Run `node --check` on changed JS files
 - [ ] Lint the **packed zip**, not the loose sources
-- [ ] Deploy + verify on the VM; confirm `Enabled: Yes / State: ACTIVE`
-
-**Important**: GNOME Shell caches extension JS modules per process. After any install/wipe on the VM, restart the session (`sudo systemctl restart gdm`) before judging behavior.
