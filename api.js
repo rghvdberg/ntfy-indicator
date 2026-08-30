@@ -22,11 +22,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import Soup from 'gi://Soup';
-import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
+import Soup from "gi://Soup";
+import GLib from "gi://GLib";
+import Gio from "gi://Gio";
 
-import { debugLog } from './utils.js';
+import { debugLog } from "./utils.js";
 
 // Lines are held back briefly before delivery so that a replayed message and
 // its trailing message_delete/message_clear tombstone (adjacent rows in ntfy's
@@ -35,7 +35,7 @@ const BATCH_WINDOW_MS = 300;
 
 export class NtfyApi {
   constructor(serverUrl, apiKey = null, acceptSelfSigned = false) {
-    this.serverUrl = serverUrl.replace(/\/$/, '');
+    this.serverUrl = serverUrl.replace(/\/$/, "");
     this.apiKey = apiKey;
     this.acceptSelfSigned = acceptSelfSigned;
     this.session = new Soup.Session();
@@ -46,10 +46,10 @@ export class NtfyApi {
 
     // Opt-in accepts every certificate error class (unknown CA, expired, …);
     // the post-connect check below re-enforces policy across TLS resumption.
-    msg.connect('accept-certificate', () => this.acceptSelfSigned);
+    msg.connect("accept-certificate", () => this.acceptSelfSigned);
 
     if (this.apiKey) {
-      msg.request_headers.append('Authorization', `Bearer ${this.apiKey}`);
+      msg.request_headers.append("Authorization", `Bearer ${this.apiKey}`);
     }
 
     for (const [k, v] of Object.entries(headers)) {
@@ -88,14 +88,24 @@ export class NtfyApi {
       const clearedIds = new Set();
       for (const p of parsedLines) {
         if (!p.sequence_id) continue;
-        if (p.event === 'message_delete') deletedIds.add(p.sequence_id);
-        else if (p.event === 'message_clear') clearedIds.add(p.sequence_id);
+        if (p.event === "message_delete") deletedIds.add(p.sequence_id);
+        else if (p.event === "message_clear") clearedIds.add(p.sequence_id);
       }
       for (const parsed of parsedLines) {
         if (onMessage) {
-          if (parsed.event === 'message' && (deletedIds.has(parsed.id) || clearedIds.has(parsed.id))) {
-            const ev = deletedIds.has(parsed.id) ? 'message_delete' : 'message_clear';
-            onMessage({ event: ev, sequence_id: parsed.id, id: parsed.id, topic: parsed.topic });
+          if (
+            parsed.event === "message" &&
+            (deletedIds.has(parsed.id) || clearedIds.has(parsed.id))
+          ) {
+            const ev = deletedIds.has(parsed.id)
+              ? "message_delete"
+              : "message_clear";
+            onMessage({
+              event: ev,
+              sequence_id: parsed.id,
+              id: parsed.id,
+              topic: parsed.topic,
+            });
           } else {
             onMessage(parsed);
           }
@@ -119,34 +129,42 @@ export class NtfyApi {
       // tombstone sits between a message and its own.
       batch.push(parsed);
       if (!batchTimerId && !cancelled) {
-        batchTimerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, BATCH_WINDOW_MS, () => {
-          batchTimerId = null;
-          flushBatch();
-          return GLib.SOURCE_REMOVE;
-        });
+        batchTimerId = GLib.timeout_add(
+          GLib.PRIORITY_DEFAULT,
+          BATCH_WINDOW_MS,
+          () => {
+            batchTimerId = null;
+            flushBatch();
+            return GLib.SOURCE_REMOVE;
+          },
+        );
       }
     };
 
     const readLines = (dataStream) => {
-      dataStream.read_line_async(GLib.PRIORITY_DEFAULT, cancellable, (stream, result) => {
-        let line = null;
-        try {
-          [line] = stream.read_line_finish_utf8(result);
-        } catch (e) {
-          if (cancelled) return;
-          debugLog('[NtfyApi] stream error:', e.message);
-          if (onError) onError(e);
-          retry();
-          return;
-        }
-        if (line === null) {
-          // Server closed the stream; reconnect and resume from lastId.
-          if (!cancelled) scheduleReconnect(1);
-          return;
-        }
-        if (line.trim()) queueLine(line);
-        if (!cancelled) readLines(dataStream);
-      });
+      dataStream.read_line_async(
+        GLib.PRIORITY_DEFAULT,
+        cancellable,
+        (stream, result) => {
+          let line = null;
+          try {
+            [line] = stream.read_line_finish_utf8(result);
+          } catch (e) {
+            if (cancelled) return;
+            debugLog("[NtfyApi] stream error:", e.message);
+            if (onError) onError(e);
+            retry();
+            return;
+          }
+          if (line === null) {
+            // Server closed the stream; reconnect and resume from lastId.
+            if (!cancelled) scheduleReconnect(1);
+            return;
+          }
+          if (line.trim()) queueLine(line);
+          if (!cancelled) readLines(dataStream);
+        },
+      );
     };
 
     const retry = () => {
@@ -157,37 +175,52 @@ export class NtfyApi {
     const connect = () => {
       if (cancelled) return;
 
-      const sinceParam = lastId ? lastId : 'all';
-      const msg = this._makeMessage('GET', `/${topic}/json?since=${sinceParam}`);
+      const sinceParam = lastId ? lastId : "all";
+      const msg = this._makeMessage(
+        "GET",
+        `/${topic}/json?since=${sinceParam}`,
+      );
 
-      this.session.send_async(msg, GLib.PRIORITY_DEFAULT, cancellable, (session, result) => {
-        if (cancelled) return;
-        let stream;
-        try {
-          stream = session.send_finish(result);
-        } catch (e) {
+      this.session.send_async(
+        msg,
+        GLib.PRIORITY_DEFAULT,
+        cancellable,
+        (session, result) => {
           if (cancelled) return;
-          debugLog('[NtfyApi] connect failed:', e.message);
-          if (onError) onError(e);
-          retry();
-          return;
-        }
-        // TLS session resumption skips the accept-certificate handshake step,
-        // so a connection reused from an earlier permissive policy would
-        // silently succeed; enforce policy against the reported cert errors.
-        const tlsErrors = msg.get_tls_peer_certificate_errors();
-        if (!this.acceptSelfSigned && tlsErrors !== Gio.TlsCertificateFlags.NONE) {
-          debugLog(`[NtfyApi] connect rejected: TLS certificate errors=${tlsErrors}`);
-          stream.close(null);
-          if (onError) onError(new Error('Unacceptable TLS certificate'));
-          retry();
-          return;
-        }
-        backoff = 1;
-        debugLog(`[NtfyApi] /${topic} CONNECTED (accept=${this.acceptSelfSigned}, since=${sinceParam})`);
-        const dataStream = new Gio.DataInputStream({ base_stream: stream });
-        readLines(dataStream);
-      });
+          let stream;
+          try {
+            stream = session.send_finish(result);
+          } catch (e) {
+            if (cancelled) return;
+            debugLog("[NtfyApi] connect failed:", e.message);
+            if (onError) onError(e);
+            retry();
+            return;
+          }
+          // TLS session resumption skips the accept-certificate handshake step,
+          // so a connection reused from an earlier permissive policy would
+          // silently succeed; enforce policy against the reported cert errors.
+          const tlsErrors = msg.get_tls_peer_certificate_errors();
+          if (
+            !this.acceptSelfSigned &&
+            tlsErrors !== Gio.TlsCertificateFlags.NONE
+          ) {
+            debugLog(
+              `[NtfyApi] connect rejected: TLS certificate errors=${tlsErrors}`,
+            );
+            stream.close(null);
+            if (onError) onError(new Error("Unacceptable TLS certificate"));
+            retry();
+            return;
+          }
+          backoff = 1;
+          debugLog(
+            `[NtfyApi] /${topic} CONNECTED (accept=${this.acceptSelfSigned}, since=${sinceParam})`,
+          );
+          const dataStream = new Gio.DataInputStream({ base_stream: stream });
+          readLines(dataStream);
+        },
+      );
     };
 
     function scheduleReconnect(delay) {
@@ -225,21 +258,31 @@ export class NtfyApi {
     return new Promise((resolve, reject) => {
       const msg = this._makeMessage(method, path, headers);
       msg.set_request_body_from_bytes(contentType, bytes);
-      this.session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (session, result) => {
-        try {
-          session.send_and_read_finish(result);
-          const tlsErrors = msg.get_tls_peer_certificate_errors();
-          if (!this.acceptSelfSigned && tlsErrors !== Gio.TlsCertificateFlags.NONE) {
-            debugLog(`[NtfyApi] publish rejected: TLS certificate errors=${tlsErrors}`);
-            reject(new Error('Unacceptable TLS certificate'));
-            return;
+      this.session.send_and_read_async(
+        msg,
+        GLib.PRIORITY_DEFAULT,
+        null,
+        (session, result) => {
+          try {
+            session.send_and_read_finish(result);
+            const tlsErrors = msg.get_tls_peer_certificate_errors();
+            if (
+              !this.acceptSelfSigned &&
+              tlsErrors !== Gio.TlsCertificateFlags.NONE
+            ) {
+              debugLog(
+                `[NtfyApi] publish rejected: TLS certificate errors=${tlsErrors}`,
+              );
+              reject(new Error("Unacceptable TLS certificate"));
+              return;
+            }
+            resolve();
+          } catch (e) {
+            debugLog("[NtfyApi] publish failed:", e.message);
+            reject(e);
           }
-          resolve();
-        } catch (e) {
-          debugLog('[NtfyApi] publish failed:', e.message);
-          reject(e);
-        }
-      });
+        },
+      );
     });
   }
 }

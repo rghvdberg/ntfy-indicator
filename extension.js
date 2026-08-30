@@ -15,13 +15,16 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
-import { Indicator } from './indicator.js';
-import { initSubscriptionManager, subscriptionManager } from './subscription-manager.js';
-import { notificationStore } from './notification-store.js';
-import { debugLog, parseTopicUrl } from './utils.js';
+import { Indicator } from "./indicator.js";
+import {
+  initSubscriptionManager,
+  subscriptionManager,
+} from "./subscription-manager.js";
+import { notificationStore } from "./notification-store.js";
+import { debugLog, parseTopicUrl } from "./utils.js";
 
 export default class NtfyExtension extends Extension {
   enable() {
@@ -30,15 +33,15 @@ export default class NtfyExtension extends Extension {
     this._indicator = new Indicator(this._settings, this);
     Main.panel.addToStatusArea(this.uuid, this._indicator);
 
-    const defaultServer = this._settings.get_string('server');
-    const activeChannels = this._settings.get_strv('channels').map((entry) => {
+    const defaultServer = this._settings.get_string("server");
+    const activeChannels = this._settings.get_strv("channels").map((entry) => {
       const { baseUrl, topic } = parseTopicUrl(entry);
       return `${baseUrl || defaultServer}/${topic}`;
     });
     notificationStore.cleanupInactiveStores(activeChannels);
     notificationStore.sweepOrphanedAttachments(activeChannels);
 
-    debugLog('Extension enabled');
+    debugLog("Extension enabled");
   }
 
   disable() {
@@ -48,6 +51,6 @@ export default class NtfyExtension extends Extension {
       this._indicator = null;
     }
     this._settings = null;
-    debugLog('Extension disabled');
+    debugLog("Extension disabled");
   }
 }

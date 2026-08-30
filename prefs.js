@@ -16,19 +16,19 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import Adw from 'gi://Adw';
-import Gtk from 'gi://Gtk';
+import Adw from "gi://Adw";
+import Gtk from "gi://Gtk";
 
-import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
-import { parseTopicUrl, getApiKey, debugLog } from './utils.js';
+import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
+import { parseTopicUrl, getApiKey, debugLog } from "./utils.js";
 
 export default class NtfyPreferences extends ExtensionPreferences {
   fillPreferencesWindow(window) {
     this.settings = this.getSettings();
 
     const page = new Adw.PreferencesPage({
-      title: 'General',
-      icon_name: 'preferences-system-symbolic'
+      title: "General",
+      icon_name: "preferences-system-symbolic",
     });
     this._currentPage = page;
 
@@ -38,7 +38,7 @@ export default class NtfyPreferences extends ExtensionPreferences {
 
     window.add(page);
 
-    window.connect('close-request', () => {
+    window.connect("close-request", () => {
       this.settings = null;
       return false;
     });
@@ -46,28 +46,28 @@ export default class NtfyPreferences extends ExtensionPreferences {
 
   _createServerGroup() {
     const group = new Adw.PreferencesGroup({
-      title: 'Server'
+      title: "Server",
     });
 
     // Server URL
     const serverRow = new Adw.EntryRow({
-      title: 'Server URL',
-      text: this.settings.get_string('server')
+      title: "Server URL",
+      text: this.settings.get_string("server"),
     });
 
-    serverRow.connect('changed', (entry) => {
-      this.settings.set_string('server', entry.get_text());
+    serverRow.connect("changed", (entry) => {
+      this.settings.set_string("server", entry.get_text());
     });
 
     group.add(serverRow);
 
     // API Key
     const apiKeyRow = new Adw.EntryRow({
-      title: 'API Key',
-      text: getApiKey(this.settings, this.settings.get_string('server')) || ''
+      title: "API Key",
+      text: getApiKey(this.settings, this.settings.get_string("server")) || "",
     });
 
-    apiKeyRow.connect('changed', (entry) => {
+    apiKeyRow.connect("changed", (entry) => {
       this._setApiKey(entry.get_text());
     });
 
@@ -75,12 +75,12 @@ export default class NtfyPreferences extends ExtensionPreferences {
 
     // Accept self-signed certs
     const sslRow = new Adw.SwitchRow({
-      title: 'Accept self-signed certificates',
-      active: this.settings.get_boolean('accept-self-signed')
+      title: "Accept self-signed certificates",
+      active: this.settings.get_boolean("accept-self-signed"),
     });
 
-    sslRow.connect('notify::active', (row) => {
-      this.settings.set_boolean('accept-self-signed', row.get_active());
+    sslRow.connect("notify::active", (row) => {
+      this.settings.set_boolean("accept-self-signed", row.get_active());
     });
 
     group.add(sslRow);
@@ -90,34 +90,34 @@ export default class NtfyPreferences extends ExtensionPreferences {
 
   _createSubscriptionGroup() {
     const group = new Adw.PreferencesGroup({
-      title: 'Subscriptions'
+      title: "Subscriptions",
     });
 
     const list = new Gtk.ListBox({
       selection_mode: Gtk.SelectionMode.NONE,
-      css_classes: ['boxed-list'],
+      css_classes: ["boxed-list"],
     });
     this._loadTopics(list);
     group.add(list);
 
     const addBtn = new Gtk.Button({
       halign: Gtk.Align.START,
-      css_classes: ['suggested-action'],
+      css_classes: ["suggested-action"],
       margin_top: 8,
     });
     const addBtnBox = new Gtk.Box({ spacing: 6 });
-    addBtnBox.append(new Gtk.Image({ icon_name: 'list-add-symbolic' }));
-    addBtnBox.append(new Gtk.Label({ label: 'Add topic' }));
+    addBtnBox.append(new Gtk.Image({ icon_name: "list-add-symbolic" }));
+    addBtnBox.append(new Gtk.Label({ label: "Add topic" }));
     addBtn.set_child(addBtnBox);
-    addBtn.connect('clicked', () => this._addTopic(list));
+    addBtn.connect("clicked", () => this._addTopic(list));
     group.add(addBtn);
 
     return group;
   }
 
   _loadTopics(list) {
-    const globalServer = this.settings.get_string('server');
-    for (const entry of this.settings.get_strv('channels')) {
+    const globalServer = this.settings.get_string("server");
+    for (const entry of this.settings.get_strv("channels")) {
       this._addTopicRow(list, entry, globalServer);
     }
   }
@@ -128,11 +128,11 @@ export default class NtfyPreferences extends ExtensionPreferences {
     const row = new Adw.ActionRow({ title: topic, subtitle: server });
     row._channelEntry = entry;
     const removeBtn = new Gtk.Button({
-      icon_name: 'user-trash-symbolic',
-      css_classes: ['flat', 'circular', 'error'],
+      icon_name: "user-trash-symbolic",
+      css_classes: ["flat", "circular", "error"],
       valign: Gtk.Align.CENTER,
     });
-    removeBtn.connect('clicked', () => {
+    removeBtn.connect("clicked", () => {
       list.remove(row);
       this._saveTopics(list);
     });
@@ -141,35 +141,56 @@ export default class NtfyPreferences extends ExtensionPreferences {
   }
 
   _addTopic(list) {
-    const globalServer = this.settings.get_string('server');
+    const globalServer = this.settings.get_string("server");
     const dialog = new Adw.AlertDialog({
-      heading: 'Add topic',
-      body: 'Enter a topic name and optionally a different server',
+      heading: "Add topic",
+      body: "Enter a topic name and optionally a different server",
     });
-    dialog.add_response('cancel', 'Cancel');
-    dialog.add_response('add', 'Add');
-    dialog.set_response_appearance('add', Adw.ResponseAppearance.SUGGESTED);
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("add", "Add");
+    dialog.set_response_appearance("add", Adw.ResponseAppearance.SUGGESTED);
 
-    const vbox = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 8 });
-    const topicEntry = new Gtk.Entry({ placeholder_text: 'e.g. my-topic' });
-    const serverEntry = new Gtk.Entry({ placeholder_text: globalServer, text: '' });
-    const serverLabel = new Gtk.Label({ label: 'Server (leave empty for default)', halign: Gtk.Align.START, css_classes: ['caption', 'dim-label'] });
+    const vbox = new Gtk.Box({
+      orientation: Gtk.Orientation.VERTICAL,
+      spacing: 8,
+    });
+    const topicEntry = new Gtk.Entry({ placeholder_text: "e.g. my-topic" });
+    const serverEntry = new Gtk.Entry({
+      placeholder_text: globalServer,
+      text: "",
+    });
+    const serverLabel = new Gtk.Label({
+      label: "Server (leave empty for default)",
+      halign: Gtk.Align.START,
+      css_classes: ["caption", "dim-label"],
+    });
     vbox.append(serverLabel);
     vbox.append(serverEntry);
-    vbox.append(new Gtk.Label({ label: 'Topic name', halign: Gtk.Align.START, css_classes: ['caption', 'dim-label'] }));
+    vbox.append(
+      new Gtk.Label({
+        label: "Topic name",
+        halign: Gtk.Align.START,
+        css_classes: ["caption", "dim-label"],
+      }),
+    );
     vbox.append(topicEntry);
     dialog.set_extra_child(vbox);
 
-    topicEntry.connect('activate', () => dialog.response('add'));
+    topicEntry.connect("activate", () => dialog.response("add"));
 
-    dialog.connect('response', (_dlg, response) => {
-      if (response !== 'add') return;
-      const topic = topicEntry.get_text().trim().replace(/[^a-zA-Z0-9_-]/g, '');
+    dialog.connect("response", (_dlg, response) => {
+      if (response !== "add") return;
+      const topic = topicEntry
+        .get_text()
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, "");
       if (!topic) return;
-      const server = serverEntry.get_text().trim().replace(/\/+$/, '') || globalServer;
-      const channelEntry = server === globalServer ? topic : `${server}/${topic}`;
+      const server =
+        serverEntry.get_text().trim().replace(/\/+$/, "") || globalServer;
+      const channelEntry =
+        server === globalServer ? topic : `${server}/${topic}`;
 
-      const current = this.settings.get_strv('channels');
+      const current = this.settings.get_strv("channels");
       if (current.includes(channelEntry)) return;
 
       this._addTopicRow(list, channelEntry, globalServer);
@@ -186,28 +207,28 @@ export default class NtfyPreferences extends ExtensionPreferences {
       if (child._channelEntry) topics.push(child._channelEntry);
       child = child.get_next_sibling();
     }
-    this.settings.set_strv('channels', topics);
+    this.settings.set_strv("channels", topics);
   }
 
   _createNotificationGroup() {
     const group = new Adw.PreferencesGroup({
-      title: 'Notifications'
+      title: "Notifications",
     });
 
     // History limit
     const historyRow = new Adw.SpinRow({
-      title: 'History Limit',
+      title: "History Limit",
       adjustment: new Gtk.Adjustment({
         lower: 10,
         upper: 1000,
         step_increment: 10,
         page_increment: 100,
-        value: this.settings.get_int('history-limit')
-      })
+        value: this.settings.get_int("history-limit"),
+      }),
     });
 
-    historyRow.connect('notify::value', (spin) => {
-      this.settings.set_int('history-limit', spin.get_value());
+    historyRow.connect("notify::value", (spin) => {
+      this.settings.set_int("history-limit", spin.get_value());
     });
 
     group.add(historyRow);
@@ -216,14 +237,14 @@ export default class NtfyPreferences extends ExtensionPreferences {
   }
 
   _setApiKey(apiKey) {
-    const serverUrl = this.settings.get_string('server');
+    const serverUrl = this.settings.get_string("server");
     try {
-      const apiKeysStr = this.settings.get_string('api-keys');
+      const apiKeysStr = this.settings.get_string("api-keys");
       const apiKeys = JSON.parse(apiKeysStr);
       apiKeys[serverUrl] = apiKey;
-      this.settings.set_string('api-keys', JSON.stringify(apiKeys));
+      this.settings.set_string("api-keys", JSON.stringify(apiKeys));
     } catch (e) {
-      debugLog('Failed to save API key:', e);
+      debugLog("Failed to save API key:", e);
     }
   }
 }

@@ -35,10 +35,11 @@ const DBUS_NAME = "com.github.rghvdberg.ntfy_indicator";
 const DBUS_PATH = "/com/github/rghvdberg/ntfy_indicator/service";
 
 export async function main() {
-
   const args = ARGV;
   if (args.length < 4) {
-    print("Usage: history-dialog.js serverUrl initialTopic topic1,topic2,... muted");
+    print(
+      "Usage: history-dialog.js serverUrl initialTopic topic1,topic2,... muted",
+    );
     return 1;
   }
 
@@ -61,14 +62,16 @@ export async function main() {
   const allTopics = _parsed.map((p) => p.topic);
   const topicUrlMap = {};
   for (const p of _parsed) topicUrlMap[p.topic] = p.topicUrl;
-  const extDir = extPath || GLib.build_filenamev([
-    GLib.get_home_dir(),
-    ".local",
-    "share",
-    "gnome-shell",
-    "extensions",
-    "ntfy-indicator@rghvdberg",
-  ]);
+  const extDir =
+    extPath ||
+    GLib.build_filenamev([
+      GLib.get_home_dir(),
+      ".local",
+      "share",
+      "gnome-shell",
+      "extensions",
+      "ntfy-indicator@rghvdberg",
+    ]);
   function _storePath(t) {
     return getNotificationFile(topicUrlMap[t]);
   }
@@ -629,7 +632,9 @@ export async function main() {
         const iw = pixbuf.get_width();
         const ih = pixbuf.get_height();
         if (iw <= 0 || ih <= 0) {
-          debugLog(`[history] Invalid image dimensions ${iw}x${ih}: ${cachePath}`);
+          debugLog(
+            `[history] Invalid image dimensions ${iw}x${ih}: ${cachePath}`,
+          );
           return null;
         }
 
@@ -697,7 +702,7 @@ export async function main() {
           Gio.DBusCallFlags.NONE,
           -1,
           null,
-          null
+          null,
         );
       } catch (e) {
         /* sendCommand failed */
@@ -1001,7 +1006,7 @@ export async function main() {
         _sendCommand(
           "Publish",
           [text, attachFilePath ?? "", headers],
-          "ssa{ss}"
+          "ssa{ss}",
         );
         dlg.close();
       });

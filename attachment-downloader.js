@@ -17,11 +17,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import Soup from 'gi://Soup';
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
+import Soup from "gi://Soup";
+import Gio from "gi://Gio";
+import GLib from "gi://GLib";
 
-import { debugLog, getCacheDir } from './utils.js';
+import { debugLog, getCacheDir } from "./utils.js";
 
 export class AttachmentDownloader {
   constructor() {
@@ -39,7 +39,7 @@ export class AttachmentDownloader {
    * @returns {string} Cache file path
    */
   _cachePath(notificationId, attachmentName) {
-    const safeName = `${notificationId}_${attachmentName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const safeName = `${notificationId}_${attachmentName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     return GLib.build_filenamev([this.cacheDir, safeName]);
   }
 
@@ -54,40 +54,49 @@ export class AttachmentDownloader {
    * @param {string} apiKey - Optional API key for authentication
    * @param {(path: string|null) => void} cb - Called with cache path or null
    */
-  _downloadFile(url, cachePath, acceptSelfSigned, apiKey, cb) {    try {
+  _downloadFile(url, cachePath, acceptSelfSigned, apiKey, cb) {
+    try {
       this._ensureCacheDir();
       const session = new Soup.Session();
-      const msg = Soup.Message.new('GET', url);
+      const msg = Soup.Message.new("GET", url);
 
       if (acceptSelfSigned) {
-        msg.connect('accept-certificate', () => true);
+        msg.connect("accept-certificate", () => true);
       }
       if (apiKey) {
-        msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
+        msg.request_headers.append("Authorization", `Bearer ${apiKey}`);
       }
 
-      session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
-        try {
-          const bytes = sess.send_and_read_finish(result);
-          const data = bytes.get_data();
-          const size = data.length;
-          if (size > 5 * 1024 * 1024) { cb(null); return; }
+      session.send_and_read_async(
+        msg,
+        GLib.PRIORITY_DEFAULT,
+        null,
+        (sess, result) => {
+          try {
+            const bytes = sess.send_and_read_finish(result);
+            const data = bytes.get_data();
+            const size = data.length;
+            if (size > 5 * 1024 * 1024) {
+              cb(null);
+              return;
+            }
 
-          const file = Gio.File.new_for_path(cachePath);
-          const ostream = file.replace(
-            null,
-            false,
-            Gio.FileCreateFlags.REPLACE_DESTINATION,
-            null
-          );
-          ostream.write_all(data, null);
-          ostream.close(null);
-          cb(cachePath);
-        } catch (e) {
-          debugLog(`[dl] Download error: ${e.message}`);
-          cb(null);
-        }
-      });
+            const file = Gio.File.new_for_path(cachePath);
+            const ostream = file.replace(
+              null,
+              false,
+              Gio.FileCreateFlags.REPLACE_DESTINATION,
+              null,
+            );
+            ostream.write_all(data, null);
+            ostream.close(null);
+            cb(cachePath);
+          } catch (e) {
+            debugLog(`[dl] Download error: ${e.message}`);
+            cb(null);
+          }
+        },
+      );
     } catch (e) {
       debugLog(`[dl] Init error: ${e.message}`);
       cb(null);
@@ -96,7 +105,7 @@ export class AttachmentDownloader {
 
   _resolveCachePath(attachment, notificationId) {
     if (!attachment || !attachment.url) return null;
-    return this._cachePath(notificationId, attachment.name || 'attachment');
+    return this._cachePath(notificationId, attachment.name || "attachment");
   }
 
   /**
@@ -105,14 +114,17 @@ export class AttachmentDownloader {
    * @param {object} notification - Notification with `id` and (optionally) `attachment`
    */
   deleteCached(notification) {
-    const cachePath = this._resolveCachePath(notification?.attachment, notification?.id);
+    const cachePath = this._resolveCachePath(
+      notification?.attachment,
+      notification?.id,
+    );
     if (!cachePath) return;
     const file = Gio.File.new_for_path(cachePath);
     if (file.query_exists(null)) {
       try {
         file.delete(null);
       } catch (e) {
-        debugLog('[dl] Failed to delete cached attachment:', e.message);
+        debugLog("[dl] Failed to delete cached attachment:", e.message);
       }
     }
   }
@@ -131,7 +143,7 @@ export class AttachmentDownloader {
       if (p) expected.add(p);
     }
     const enumerator = dir.enumerate_children(
-      'standard::name',
+      "standard::name",
       Gio.FileQueryInfoFlags.NONE,
       null,
     );
@@ -142,7 +154,7 @@ export class AttachmentDownloader {
       try {
         Gio.File.new_for_path(full).delete(null);
       } catch (e) {
-        debugLog('[dl] Failed to delete orphaned cache:', e.message);
+        debugLog("[dl] Failed to delete orphaned cache:", e.message);
       }
     }
     enumerator.close(null);
@@ -152,12 +164,23 @@ export class AttachmentDownloader {
    * Promise API for the shell extension, where promises do get pumped.
    * @returns {Promise<string|null>} Cache path on success, null on failure
    */
-  async downloadAttachment(attachment, notificationId, acceptSelfSigned, apiKey) {
+  async downloadAttachment(
+    attachment,
+    notificationId,
+    acceptSelfSigned,
+    apiKey,
+  ) {
     const cachePath = this._resolveCachePath(attachment, notificationId);
     if (!cachePath) return null;
     if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) return cachePath;
     return new Promise((resolve) => {
-      this._downloadFile(attachment.url, cachePath, acceptSelfSigned, apiKey, resolve);
+      this._downloadFile(
+        attachment.url,
+        cachePath,
+        acceptSelfSigned,
+        apiKey,
+        resolve,
+      );
     });
   }
 

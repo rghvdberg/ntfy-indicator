@@ -25,7 +25,6 @@ import { notificationStore } from "./notification-store.js";
 import { attachmentDownloader } from "./attachment-downloader.js";
 import { getApiKey, parseTopicUrl, debugLog } from "./utils.js";
 
-
 /**
  * D-Bus endpoint the history dialog process calls into. All actions execute
  * here where the store, settings and HTTP policy live; replies are void.
@@ -85,30 +84,40 @@ export class SubscriptionManager {
   _exportDbusService() {
     const handlers = {
       MarkRead: (topicUrl, id) =>
-        Promise.resolve(notificationStore.markRead(topicUrl, id))
-          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
+        Promise.resolve(notificationStore.markRead(topicUrl, id)).catch((e) =>
+          debugLog("[ntfy] D-Bus action failed:", e),
+        ),
       Delete: (topicUrl, id) =>
-        Promise.resolve(notificationStore.deleteNotification(topicUrl, id))
-          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
+        Promise.resolve(
+          notificationStore.deleteNotification(topicUrl, id),
+        ).catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
       MarkAllRead: (topicUrl) =>
-        Promise.resolve(notificationStore.markAllRead(topicUrl))
-          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
+        Promise.resolve(notificationStore.markAllRead(topicUrl)).catch((e) =>
+          debugLog("[ntfy] D-Bus action failed:", e),
+        ),
       DeleteAll: (topicUrl) =>
         Promise.resolve(
-          notificationStore.load(topicUrl).then((all) =>
-            Promise.all(
-              all.map((n) => notificationStore.deleteNotification(topicUrl, n.id)),
+          notificationStore
+            .load(topicUrl)
+            .then((all) =>
+              Promise.all(
+                all.map((n) =>
+                  notificationStore.deleteNotification(topicUrl, n.id),
+                ),
+              ),
             ),
-          ),
-        )
-          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
+        ).catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
       Mute: (topicUrl) => this.mute(topicUrl, 3600),
       Unmute: (topicUrl) => this.unmute(topicUrl),
       Publish: (topicUrl, message, filePath, headers) =>
-        Promise.resolve(this._publishFromCommand({ topicUrl, message, filePath, headers }))
-          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
+        Promise.resolve(
+          this._publishFromCommand({ topicUrl, message, filePath, headers }),
+        ).catch((e) => debugLog("[ntfy] D-Bus action failed:", e)),
     };
-    this._dbusExport = Gio.DBusExportedObject.wrapJSObject(SERVICE_XML, handlers);
+    this._dbusExport = Gio.DBusExportedObject.wrapJSObject(
+      SERVICE_XML,
+      handlers,
+    );
     this._dbusNodeId = Gio.bus_own_name(
       Gio.BusType.SESSION,
       DBUS_NAME,
@@ -391,7 +400,10 @@ export class SubscriptionManager {
     const isMuted =
       mutedTopics[topicUrl] && mutedTopics[topicUrl] > Date.now() / 1000;
 
-    const scriptPath = GLib.build_filenamev([this.extPath, "history-dialog.js"]);
+    const scriptPath = GLib.build_filenamev([
+      this.extPath,
+      "history-dialog.js",
+    ]);
 
     try {
       const launcher = new Gio.SubprocessLauncher({});
@@ -466,9 +478,21 @@ export class SubscriptionManager {
       const name = cmd.filePath.split("/").pop();
       const query = ["filename=" + encodeURIComponent(name)];
       if (cmd.message) query.push("message=" + encodeURIComponent(cmd.message));
-      await api.publish("PUT", `${path}?${query.join("&")}`, null, bytes, cmd.headers || {});
+      await api.publish(
+        "PUT",
+        `${path}?${query.join("&")}`,
+        null,
+        bytes,
+        cmd.headers || {},
+      );
     } else {
-      await api.publish("POST", path, "text/plain", new TextEncoder().encode(cmd.message), cmd.headers || {});
+      await api.publish(
+        "POST",
+        path,
+        "text/plain",
+        new TextEncoder().encode(cmd.message),
+        cmd.headers || {},
+      );
     }
   }
 
@@ -515,4 +539,3 @@ export function initSubscriptionManager(settings, extPath) {
   subscriptionManager = new SubscriptionManager(settings, extPath);
   return subscriptionManager;
 }
-
