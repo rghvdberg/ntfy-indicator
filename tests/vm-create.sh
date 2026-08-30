@@ -151,4 +151,5 @@ done
 echo
 echo "VM ready: ssh -i $KEY $NTFY_TEST_VM_USER@$IP"
 echo "Console: virt-manager -> $NTFY_TEST_VM"
-echo "Next:    NTFY_TEST_SERVER=<url> ./tests/deploy-vm.sh"
+echo "Next:    Run integration tests: NTFY_TEST_SERVER=<url> ./tests/test-integration.sh"
+echo "         Or manually test: copy extension zip and install with gnome-extensions install"
