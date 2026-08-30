@@ -74,8 +74,10 @@ Open the extension preferences to configure:
 
 ## Development
 
-See [DEVELOPING.md](DEVELOPING.md) for development guidelines, EGO compliance
-requirements, and CI packaging instructions.
+See the documentation for detailed guides:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Development guidelines, testing, and CI/CD
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Technical architecture and module overview
 
 ## License
 
