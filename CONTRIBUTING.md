@@ -161,9 +161,11 @@ curl -d "message text" https://ntfy.domain.com/topic
 # Attachment (small text files need Filename header to count as attachment)
 curl -T /path/to/file -H "Filename: file.txt" -H "Title: title" -H "Message: msg" https://ntfy.domain.com/topic
 
-# Delete / clear on the dev self-signed server
-curl -sk -X DELETE https://server.cup.cake:12707/<topic>/<id>
-curl -sk -X PUT https://server.cup.cake:12707/<topic>/<id>/clear
+# Delete / clear
+curl -s -X DELETE https://ntfy.example.com/<topic>/<id>
+curl -s -X PUT https://ntfy.example.com/<topic>/<id>/clear
+
+Note: add `-k` to skip TLS certificate verification if your server uses a self-signed certificate.
 ```
 
 ---
@@ -182,7 +184,7 @@ A new window will appear with a full GNOME desktop. The ntfy extension should be
 
 1. Creates an isolated environment (temporary home directory)
 2. Copies your extension to the nested session
-3. Sets up schemas, icons, and desktop files
+3. Sets up schemas
 4. Enables the extension via dconf
 5. Starts GNOME Shell in Wayland mode
 

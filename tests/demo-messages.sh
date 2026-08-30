@@ -4,15 +4,15 @@
 # topic switching, per-topic counts, and history limits.
 #
 # Usage:
-#   ./tests/demo-messages.sh
+#   NTFY_SERVER=https://your-ntfy-server ./tests/demo-messages.sh
 #
-# Then in the VM preferences add the printed topics to the channels list.
+# Then in the extension preferences add the printed topics to the channels list.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SERVER="https://server.cup.cake:12707"
+SERVER="${NTFY_SERVER:?Set NTFY_SERVER to your ntfy server, e.g. NTFY_SERVER=https://ntfy.example.com}"
 STAMP="$(head -c256 /dev/urandom | LC_ALL=C tr -dc 'a-z' | head -c5)"
 FIXTURES="tests/fixtures"
 

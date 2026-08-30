@@ -47,24 +47,6 @@ mkdir -p "$XDG_DATA_HOME/glib-2.0/schemas"
 cp "$EXT_DIR/schemas/"*.gschema.xml "$XDG_DATA_HOME/glib-2.0/schemas/"
 glib-compile-schemas "$XDG_DATA_HOME/glib-2.0/schemas"
 
-# Install icons
-echo "=> installing icons"
-mkdir -p "$XDG_DATA_HOME/icons/hicolor/scalable/apps"
-cp "$EXT_DIR/icons/ntfy.svg" "$XDG_DATA_HOME/icons/hicolor/scalable/apps/"
-[ -f "$EXT_DIR/icons/ntfy-indicator.svg" ] && cp "$EXT_DIR/icons/ntfy-indicator.svg" "$XDG_DATA_HOME/icons/hicolor/scalable/apps/"
-gtk-update-icon-cache -q -t "$XDG_DATA_HOME/icons/hicolor" 2>/dev/null || true
-
-# Install desktop file
-echo "=> installing desktop file"
-mkdir -p "$XDG_CONFIG_HOME/applications"
-cat > "$XDG_CONFIG_HOME/applications/com.ntfy.HistoryDialog.desktop" <<'DESKTOP'
-[Desktop Entry]
-Type=Application
-Name=ntfy History
-Icon=ntfy
-NoDisplay=true
-DESKTOP
-
 # `--devkit` mode writes this marker to disable all user extensions at
 # startup. Remove it so our extension can load.
 rm -f "/run/user/$(id -u)/gnome-shell-disable-extensions" || true

@@ -40,15 +40,15 @@ async function main() {
     "ipv6 re-bracketed",
   );
   expectParse(
-    "https://server.cup.cake:12707/testing",
-    "https://server.cup.cake:12707",
+    "https://ntfy.example.org:8443/testing",
+    "https://ntfy.example.org:8443",
     "testing",
-    "dev server",
+    "host with port",
   );
 
-  const f = getNotificationFile("https://server.cup.cake:12707/testing");
+  const f = getNotificationFile("https://ntfy.example.org:8443/testing");
   assert(
-    f.endsWith("/https___server_cup_cake_12707_testing.json"),
+    f.endsWith("/https___ntfy_example_org_8443_testing.json"),
     `getNotificationFile safe name: ${f}`,
   );
 
