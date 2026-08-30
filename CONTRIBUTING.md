@@ -198,7 +198,12 @@ A new window will appear with a full GNOME desktop. The ntfy extension should be
 
 ### Stopping
 
-Press `Ctrl+C` in the terminal to stop the nested shell.
+You can stop the nested shell in two ways:
+
+1. **Keyboard shortcut**: Press `Ctrl+C` in the terminal where the script is running
+2. **UI button**: Click the **orange button** with a computer screen and arrow icon in the top bar of the nested shell window. This is GNOME Shell's built-in "Exit Nested Session" control. Next to it is a square stop button that also stops the session.
+
+Both methods will terminate the nested GNOME Shell process and clean up the temporary environment.
 
 ### Troubleshooting
 
