@@ -103,20 +103,16 @@ export class AttachmentDownloader {
     }
   }
 
-  _resolveCachePath(attachment, notificationId) {
-    if (!attachment || !attachment.url) return null;
-    return this._cachePath(notificationId, attachment.name || "attachment");
-  }
-
   /**
    * Delete the cached file for a single removed notification. No-op if the
    * notification has no attachment or the file is already gone.
    * @param {object} notification - Notification with `id` and (optionally) `attachment`
    */
   deleteCached(notification) {
-    const cachePath = this._resolveCachePath(
-      notification?.attachment,
-      notification?.id,
+    if (!notification?.attachment?.url) return;
+    const cachePath = this._cachePath(
+      notification.id,
+      notification.attachment.name || "attachment",
     );
     if (!cachePath) return;
     const file = Gio.File.new_for_path(cachePath);
@@ -139,8 +135,11 @@ export class AttachmentDownloader {
     if (!dir.query_exists(null)) return;
     const expected = new Set();
     for (const n of liveNotifications) {
-      const p = this._resolveCachePath(n.attachment, n.id);
-      if (p) expected.add(p);
+      if (n.attachment?.url) {
+        expected.add(
+          this._cachePath(n.id, n.attachment.name || "attachment"),
+        );
+      }
     }
     const enumerator = dir.enumerate_children(
       "standard::name",
@@ -170,8 +169,11 @@ export class AttachmentDownloader {
     acceptSelfSigned,
     apiKey,
   ) {
-    const cachePath = this._resolveCachePath(attachment, notificationId);
-    if (!cachePath) return null;
+    if (!attachment?.url) return null;
+    const cachePath = this._cachePath(
+      notificationId,
+      attachment.name || "attachment",
+    );
     if (GLib.file_test(cachePath, GLib.FileTest.EXISTS)) return cachePath;
     return new Promise((resolve) => {
       this._downloadFile(
@@ -191,8 +193,11 @@ export class AttachmentDownloader {
    * standalone `gjs -m` dialog process). Returns the cache path or null.
    */
   getCachedAttachment(attachment, notificationId) {
-    const cachePath = this._resolveCachePath(attachment, notificationId);
-    if (!cachePath) return null;
+    if (!attachment?.url) return null;
+    const cachePath = this._cachePath(
+      notificationId,
+      attachment.name || "attachment",
+    );
     return GLib.file_test(cachePath, GLib.FileTest.EXISTS) ? cachePath : null;
   }
 }
