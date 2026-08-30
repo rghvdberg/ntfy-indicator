@@ -283,3 +283,9 @@ After muting a topic in the dialog, there is no persistent visual cue that the t
 - Dialog sidebar (`history-dialog.js`): pass the full `muted-topics` JSON to the dialog; show a `notification-disabled-symbolic` icon per muted topic row; fix the header "Mute"/"Unmute" label to track the selected topic (not just the initial topic).
 
 Mute semantics: messages are still stored + counted while muted (web app behavior); only the desktop banner is suppressed.
+
+### API Key Support (Untested)
+
+API key authentication is implemented in the code but has not been tested with real authenticated ntfy servers. The feature may have edge cases or compatibility issues that are unknown until tested.
+
+**Status**: Implemented but untested. Users needing authenticated servers should test and report back.
