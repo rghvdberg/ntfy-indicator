@@ -205,12 +205,6 @@ You can stop the nested shell in two ways:
 
 Both methods will terminate the nested GNOME Shell process and clean up the temporary environment.
 
-### Troubleshooting
-
-- **Extension not showing**: Check the terminal for errors, verify the extension is in the correct directory.
-- **Window doesn't appear**: Make sure you're running on Wayland, check if your display server supports nested Wayland.
-- **No notifications**: The nested shell has no network access to your ntfy server by default. You may need to configure network access or use mock data.
-
 ---
 
 ## CI/CD and Deployment
