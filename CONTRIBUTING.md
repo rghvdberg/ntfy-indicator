@@ -268,10 +268,6 @@ After upload, the extension appears in the "Pending" section of your extensions.
 
 Actions `checkout@v4`, `upload-artifact@v4`, and `action-gh-release@v2` show Node.js 20 deprecation warnings. Workflows complete successfully (GitHub forces Node.js 24). Update action versions when convenient.
 
----
-
----
-
 ## Known Issues / Deferred
 
 ### History Dialog Scroll Glitch
