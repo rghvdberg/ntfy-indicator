@@ -17,13 +17,15 @@ This project is vibe coded — built collaboratively with AI (opencode). The hum
 
 ## Installation
 
-### From GitHub Releases (Recommended)
+### From GitHub Releases
 
-1. Download the latest `.shell-extension.zip` artifact from the [GitHub Actions](https://github.com/rghvdberg/ntfy-indicator/actions) or [Releases](https://github.com/rghvdberg/ntfy-indicator/releases) page
-2. Open GNOME Extensions app (or `gnome-extensions-app`)
-3. Click the gear icon → "Install from file..."
-4. Select the downloaded `.zip` file
-5. Toggle the extension on
+1. Download the latest `ntfy-indicator@rghvdberg.shell-extension.zip` from the [Releases page](https://github.com/rghvdberg/ntfy-indicator/releases)
+2. Install it:
+   ```bash
+   gnome-extensions install -f ntfy-indicator@rghvdberg.shell-extension.zip
+   ```
+3. Enable it: `gnome-extensions enable ntfy-indicator@rghvdberg`
+4. Restart GNOME Shell (X11: Alt+F2, `r`; Wayland: log out/in)
 
 ### From Source
 
@@ -64,12 +66,6 @@ Open the extension preferences to configure:
 ## Requirements
 
 - GNOME Shell 50+
-- For nested shell development: `mutter-dev-bin` package (provides `mutter-devkit` for window display)
-
-```bash
-# Install development dependency for nested shell
-sudo apt install mutter-dev-bin
-```
 
 ## Development
 
