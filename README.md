@@ -17,6 +17,14 @@ This project is vibe coded — built collaboratively with AI (opencode). The hum
 
 ## Installation
 
+### From GitHub Releases (Recommended)
+
+1. Download the latest `.shell-extension.zip` artifact from the [GitHub Actions](https://github.com/rghvdberg/ntfy-indicator/actions) or [Releases](https://github.com/rghvdberg/ntfy-indicator/releases) page
+2. Open GNOME Extensions app (or `gnome-extensions-app`)
+3. Click the gear icon → "Install from file..."
+4. Select the downloaded `.zip` file
+5. Toggle the extension on
+
 ### From Source
 
 ```bash
@@ -24,13 +32,15 @@ This project is vibe coded — built collaboratively with AI (opencode). The hum
 git clone https://github.com/rghvdberg/ntfy-indicator.git
 cd ntfy-indicator
 
-# Install to GNOME extensions directory
-cp -r . ~/.local/share/gnome-shell/extensions/ntfy-indicator@rghvdberg
+# Pack the extension
+gnome-extensions pack -f -o build \
+  --extra-source=api.js --extra-source=attachment-downloader.js \
+  --extra-source=history-dialog.js --extra-source=indicator.js \
+  --extra-source=notification-store.js --extra-source=subscription-manager.js \
+  --extra-source=utils.js --extra-source=LICENSE --extra-source=icons .
 
-# Compile GSettings schemas
-mkdir -p ~/.local/share/glib-2.0/schemas
-cp ~/.local/share/gnome-shell/extensions/ntfy-indicator@rghvdberg/schemas/*.gschema.xml ~/.local/share/glib-2.0/schemas/
-glib-compile-schemas ~/.local/share/glib-2.0/schemas
+# Install the packed zip
+gnome-extensions install -f build/ntfy-indicator@rghvdberg.shell-extension.zip
 
 # Enable the extension
 gnome-extensions enable ntfy-indicator@rghvdberg
@@ -45,10 +55,11 @@ gnome-extensions enable ntfy-indicator@rghvdberg
 Open the extension preferences to configure:
 
 - **Server URL** — Base URL of your ntfy server (default: `https://ntfy.sh`)
-- **API Key** — For authenticated servers (optional, untested)
 - **Accept self-signed certificates** — For self-hosted servers with self-signed certs
-- **Topics** — Add topics to subscribe to
+- **Topics** — Add topics to subscribe to (e.g., `https://ntfy.sh/my-topic` or just `my-topic`)
 - **History Limit** — Max notifications per topic (default: 100)
+
+**Note**: API keys are supported in the code but not yet tested. If you need authenticated servers, please test and report back.
 
 ## Requirements
 
