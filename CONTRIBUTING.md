@@ -9,7 +9,6 @@ This guide covers development, testing, and deployment for the ntfy GNOME Shell 
 - [Testing](#testing)
 - [Local Development with Nested Shell](#local-development-with-nested-shell)
 - [CI/CD and Deployment](#cicd-and-deployment)
-- [Code Style and Best Practices](#code-style-and-best-practices)
 
 ---
 
@@ -270,23 +269,6 @@ After upload, the extension appears in the "Pending" section of your extensions.
 Actions `checkout@v4`, `upload-artifact@v4`, and `action-gh-release@v2` show Node.js 20 deprecation warnings. Workflows complete successfully (GitHub forces Node.js 24). Update action versions when convenient.
 
 ---
-
-## Code Style and Best Practices
-
-### Verification Checklist
-
-Before deploying:
-
-- [ ] Pass the **shexli check** (with pinned tree-sitter version)
-- [ ] Run `node --check` on changed JS files
-- [ ] Lint the **packed zip**, not the loose sources
-- [ ] Deploy + verify on the VM; confirm the extension reports `Enabled: Yes / State: ACTIVE`
-
-### Important Notes
-
-- **GNOME Shell caches extension JS modules per process**: enable/disable in the same session does not re-import code, and a freshly zip-installed extension may not appear in `gnome-extensions list` until the session restarts. After any install/wipe on the VM, restart the session (`sudo systemctl restart gdm`) before judging behavior.
-- **Installation**: `gnome-extensions install` automatically handles schema compilation — no manual `glib-compile-schemas` needed.
-- **Store directory**: The store dir is self-healed in `_persist`, but mid-session deletion of `~/.local/share/ntfy` is not a supported scenario.
 
 ---
 
