@@ -61,6 +61,7 @@ Requires `gjs`. Set `NTFY_TEST_SERVER=https://...` to include API tests (they hi
 ### Run a Single Test Suite
 
 ```bash
+# Run with isolated temp directory to avoid polluting your real ~/.local/share/ntfy/
 XDG_DATA_HOME=$(mktemp -d) gjs -m tests/test-utils.js
 XDG_DATA_HOME=$(mktemp -d) gjs -m tests/test-store.js
 NTFY_TEST_SERVER=https://... XDG_DATA_HOME=$(mktemp -d) gjs -m tests/test-api.js
