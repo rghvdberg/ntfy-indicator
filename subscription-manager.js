@@ -30,7 +30,6 @@ import { getApiKey, parseTopicUrl, debugLog } from "./utils.js";
  * here where the store, settings and HTTP policy live; replies are void.
  */
 const DBUS_NAME = "com.github.rghvdberg.ntfy_indicator";
-const DBUS_PATH = "/com/github/rghvdberg/ntfy_indicator/service";
 const SERVICE_XML = `
 <node>
   <interface name="${DBUS_NAME}.Service">
@@ -81,29 +80,31 @@ export class SubscriptionManager {
    * run here where the store, settings and HTTP policy live; replies are
    * void and failures logged. destroy() releases name and export.
    */
-_exportDbusService() {
+  _exportDbusService() {
     this._dbusExport = Gio.DBusExportedObject.wrapJSObject(SERVICE_XML, {
       MarkRead: (topicUrl, id) => {
-        notificationStore.markRead(topicUrl, id).catch((e) =>
-          debugLog("[ntfy] D-Bus action failed:", e),
-        );
+        notificationStore
+          .markRead(topicUrl, id)
+          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e));
       },
       Delete: (topicUrl, id) => {
-        notificationStore.deleteNotification(topicUrl, id).catch((e) =>
-          debugLog("[ntfy] D-Bus action failed:", e),
-        );
+        notificationStore
+          .deleteNotification(topicUrl, id)
+          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e));
       },
       MarkAllRead: (topicUrl) => {
-        notificationStore.markAllRead(topicUrl).catch((e) =>
-          debugLog("[ntfy] D-Bus action failed:", e),
-        );
+        notificationStore
+          .markAllRead(topicUrl)
+          .catch((e) => debugLog("[ntfy] D-Bus action failed:", e));
       },
       DeleteAll: (topicUrl) => {
         notificationStore
           .load(topicUrl)
           .then((all) =>
             Promise.all(
-              all.map((n) => notificationStore.deleteNotification(topicUrl, n.id)),
+              all.map((n) =>
+                notificationStore.deleteNotification(topicUrl, n.id),
+              ),
             ),
           )
           .catch((e) => debugLog("[ntfy] D-Bus action failed:", e));
@@ -111,9 +112,12 @@ _exportDbusService() {
       Mute: (topicUrl) => this.mute(topicUrl, 3600),
       Unmute: (topicUrl) => this.unmute(topicUrl),
       Publish: (topicUrl, message, filePath, headers) => {
-        this._publishFromCommand({ topicUrl, message, filePath, headers }).catch(
-          (e) => debugLog("[ntfy] D-Bus action failed:", e),
-        );
+        this._publishFromCommand({
+          topicUrl,
+          message,
+          filePath,
+          headers,
+        }).catch((e) => debugLog("[ntfy] D-Bus action failed:", e));
       },
     });
   }
@@ -164,6 +168,12 @@ _exportDbusService() {
       this.subscriptions[fullTopicUrl] = subscription;
 
       return true;
+    } catch (error) {
+      debugLog(
+        `[SubscriptionManager] Failed to subscribe to ${fullTopicUrl}:`,
+        error,
+      );
+      return false;
     }
   }
 
@@ -212,6 +222,12 @@ _exportDbusService() {
     if (this._source) {
       this._source.destroy();
       this._source = null;
+    }
+    if (this._historyProc) {
+      this._historyProc.force_exit();
+      this._historyProc = null;
+      this._historyPid = null;
+      this._historyTopic = null;
     }
   }
 
