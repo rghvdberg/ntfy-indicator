@@ -29,7 +29,8 @@ import { getApiKey, parseTopicUrl, debugLog } from "./utils.js";
  * D-Bus endpoint the history dialog process calls into. All actions execute
  * here where the store, settings and HTTP policy live; replies are void.
  */
-const DBUS_NAME = "com.github.rghvdberg.ntfy_indicator";
+const DBUS_NAME = "org.gnome.Shell.Extensions.NtfyIndicator";
+const DBUS_PATH = "/org/gnome/Shell/Extensions/NtfyIndicator";
 const SERVICE_XML = `
 <node>
   <interface name="${DBUS_NAME}.Service">
@@ -78,7 +79,8 @@ export class SubscriptionManager {
   /**
    * Export the dialog-facing D-Bus service on the session bus. All actions
    * run here where the store, settings and HTTP policy live; replies are
-   * void and failures logged. destroy() releases name and export.
+   * void and failures logged. Owns the well-known name and exports the
+   * object once the connection is ready; destroy() releases both.
    */
   _exportDbusService() {
     this._dbusExport = Gio.DBusExportedObject.wrapJSObject(SERVICE_XML, {
@@ -120,6 +122,20 @@ export class SubscriptionManager {
         }).catch((e) => debugLog("[ntfy] D-Bus action failed:", e));
       },
     });
+    this._dbusNodeId = Gio.bus_own_name(
+      Gio.BusType.SESSION,
+      DBUS_NAME,
+      Gio.BusNameOwnerFlags.NONE,
+      (connection) => {
+        try {
+          this._dbusExport.export(connection, DBUS_PATH);
+        } catch (e) {
+          debugLog("[ntfy] D-Bus export failed:", e);
+        }
+      },
+      null,
+      null,
+    );
   }
 
   /**

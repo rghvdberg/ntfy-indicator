@@ -31,8 +31,8 @@ import { attachmentDownloader } from "./attachment-downloader.js";
 
 // Shell-side service the dialog sends actions to (must match
 // subscription-manager.js)
-const DBUS_NAME = "com.github.rghvdberg.ntfy_indicator";
-const DBUS_PATH = "/com/github/rghvdberg/ntfy_indicator/service";
+const DBUS_NAME = "org.gnome.Shell.Extensions.NtfyIndicator";
+const DBUS_PATH = "/org/gnome/Shell/Extensions/NtfyIndicator";
 
 export async function main() {
   const args = ARGV;

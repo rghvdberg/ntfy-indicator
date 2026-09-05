@@ -232,9 +232,9 @@ else
 fi
 
 echo "=== dbus: dialog service (shell exports, dialog calls) ==="
-# The extension owns com.github.rghvdberg.ntfy_indicator while enabled
-DEST=com.github.rghvdberg.ntfy_indicator
-OBJ=/com/github/rghvdberg/ntfy_indicator/service
+# The extension owns org.gnome.Shell.Extensions.NtfyIndicator while enabled
+DEST=org.gnome.Shell.Extensions.NtfyIndicator
+OBJ=/org/gnome/Shell/Extensions/NtfyIndicator
 IFACE=$DEST.Service
 
 # Start history dialog (on the nested shell's display)
@@ -291,9 +291,9 @@ import GLib from 'gi://GLib';
 
 const [topicUrl, id] = ARGV;
 Gio.DBus.session.call(
-  'com.github.rghvdberg.ntfy_indicator',
-  '/com/github/rghvdberg/ntfy_indicator/service',
-  'com.github.rghvdberg.ntfy_indicator.Service',
+  'org.gnome.Shell.Extensions.NtfyIndicator',
+  '/org/gnome/Shell/Extensions/NtfyIndicator',
+  'org.gnome.Shell.Extensions.NtfyIndicator.Service',
   'MarkRead',
   new GLib.Variant('(ss)', [topicUrl, id]),
   null,

@@ -54,7 +54,7 @@ The extension must also pass the **EGO review guidelines** — it is a target fo
 - Standalone GTK4 app spawned by the shell
 - Topics sidebar, messages list, publish entry
 - Sends actions (mark read/delete/mute/publish) to the shell over D-Bus
-- The shell owns `com.github.rghvdberg.ntfy_indicator` on the session bus while enabled and exports a void-reply `Service` interface
+- The shell owns `org.gnome.Shell.Extensions.NtfyIndicator` on the session bus while enabled and exports a void-reply `Service` interface
 - The dialog is a thin client
 
 ### Attachments
@@ -105,7 +105,7 @@ It holds no store state of its own — actions go to the shell over D-Bus, updat
 | `subscription-manager.js` | Manages one `NtfyApi` feed per topic; delivers new messages to the store and desktop; owns the `MessageTray` source; exports the D-Bus service; spawns the dialog subprocess |
 | `api.js` | `NtfyApi` — libsoup3 long-poll client (`GET /<topic>/json?since=...`), exponential backoff, self-signed TLS policy, and batching/tombstone handling |
 | `notification-store.js` | Persistent per-topic JSON store in `~/.local/share/ntfy/`. Serializes writes per topic. Emits change callbacks |
-| `history-dialog.js` | GTK4 history/publish UI. Reads store files and calls D-Bus methods on `com.github.rghvdberg.ntfy_indicator` |
+| `history-dialog.js` | GTK4 history/publish UI. Reads store files and calls D-Bus methods on `org.gnome.Shell.Extensions.NtfyIndicator` |
 | `attachment-downloader.js` | Caches attachment downloads in `~/.local/share/ntfy/cache` (5 MB cap) |
 | `prefs.js` | Preferences UI with libadwaita |
 | `utils.js` | Shared helpers (`parseTopicUrl`, `getApiKey`, data/cache/paths, `debugLog`) |

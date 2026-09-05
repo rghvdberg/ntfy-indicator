@@ -200,11 +200,10 @@ export class NtfyApi {
           // TLS session resumption skips the accept-certificate handshake step,
           // so a connection reused from an earlier permissive policy would
           // silently succeed; enforce policy against the reported cert errors.
+          // NOTE: Gio.TlsCertificateFlags.NONE is undefined in GJS, so test
+          // the flags value directly: nonzero means validation failed.
           const tlsErrors = msg.get_tls_peer_certificate_errors();
-          if (
-            !this.acceptSelfSigned &&
-            tlsErrors !== Gio.TlsCertificateFlags.NONE
-          ) {
+          if (!this.acceptSelfSigned && tlsErrors) {
             debugLog(
               `[NtfyApi] connect rejected: TLS certificate errors=${tlsErrors}`,
             );
@@ -269,11 +268,9 @@ export class NtfyApi {
         (session, result) => {
           try {
             session.send_and_read_finish(result);
+            // See connect(): nonzero flags mean the peer cert is unacceptable.
             const tlsErrors = msg.get_tls_peer_certificate_errors();
-            if (
-              !this.acceptSelfSigned &&
-              tlsErrors !== Gio.TlsCertificateFlags.NONE
-            ) {
+            if (!this.acceptSelfSigned && tlsErrors) {
               debugLog(
                 `[NtfyApi] publish rejected: TLS certificate errors=${tlsErrors}`,
               );
