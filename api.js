@@ -223,7 +223,7 @@ export class NtfyApi {
       );
     };
 
-    function scheduleReconnect(delay) {
+    const scheduleReconnect = (delay) => {
       if (cancelled) return;
       if (timeoutId) GLib.source_remove(timeoutId);
       timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, delay, () => {
