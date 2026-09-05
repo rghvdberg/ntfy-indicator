@@ -45,6 +45,9 @@ export default class NtfyExtension extends Extension {
   }
 
   disable() {
+    // Single teardown path: the manager owns all subscriptions and their
+    // timers/streams (→ unsubscribeAll → unsubscribe → cancel); the indicator
+    // only cleans its own signals/menu state below.
     if (subscriptionManager) subscriptionManager.destroy();
     if (this._indicator) {
       this._indicator.destroy();

@@ -237,9 +237,13 @@ export class NtfyApi {
 
     return {
       cancel: () => {
+        // Disable path: extension disable() → SubscriptionManager.destroy() →
+        // unsubscribeAll() → unsubscribe() → cancel(). Each subscription owns
+        // its timers; created in scheduleReconnect()/queueLine() above.
         cancelled = true;
         cancellable.cancel();
         if (timeoutId) GLib.source_remove(timeoutId);
+        timeoutId = null;
         if (batchTimerId) GLib.source_remove(batchTimerId);
         batchTimerId = null;
       },

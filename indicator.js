@@ -166,7 +166,8 @@ export const Indicator = GObject.registerClass(
       if (this._settingsChangedId)
         this.settings.disconnect(this._settingsChangedId);
       notificationStore._onChange = null;
-      subscriptionManager.unsubscribeAll();
+      // Subscriptions are torn down by SubscriptionManager.destroy(), which
+      // always runs first in disable(); each class cleans its own resources.
       super.destroy();
     }
   },
