@@ -272,17 +272,12 @@ export async function main() {
         return GLib.SOURCE_REMOVE;
       });
     }
-    const _storeMonitors = [];
-    const storeDirPath = _storePath(allTopics[0])
-      .split("/")
-      .slice(0, -1)
-      .join("/");
     try {
       const monitor = Gio.File.new_for_path(storeDirPath).monitor_directory(
         Gio.FileMonitorFlags.NONE,
         null,
       );
-      if (monitor)
+      if (monitor) {
         monitor.connect("changed", (_m, file, _o, e) => {
           if (
             e !== Gio.FileMonitorEvent.CHANGED &&
@@ -294,8 +289,9 @@ export async function main() {
           if (!allTopics.some((t) => _storePath(t) === file.get_path())) return;
           _onStoreFileChanged();
         });
-      _storeMonitors.push(monitor);
-      window._storeMonitors = _storeMonitors; // keep alive: GC would drop the inotify watch
+        // Keep alive: GC would drop the inotify watch with only a local ref
+        window._storeMonitor = monitor;
+      }
     } catch (e) {
       /* skip */
     }
