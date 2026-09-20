@@ -1,4 +1,5 @@
-# Shared test configuration. Override via environment, e.g.:
+# Shared test configuration. Override via environment or server.yml:
+#   source server.yml
 #   NTFY_TEST_SERVER=https://ntfy.example.com ./tests/run.sh
 #
 # NTFY_TEST_SERVER        ntfy server URL (required for api + integration tests)
@@ -8,6 +9,14 @@
 # NTFY_TEST_VM_USER       ssh/desktop user on the VM (default: tester, created by vm-create.sh)
 # NTFY_TEST_SSH_KEY       private key path (default: tests/.vm-key, auto-generated)
 
+_TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load dev server settings from server.yml if present (env vars take precedence)
+if [ -f "$_TESTS_DIR/../server.yml" ]; then
+  # shellcheck disable=SC1091
+  source "$_TESTS_DIR/../server.yml"
+fi
+
 : "${NTFY_TEST_SERVER:=}"
 : "${NTFY_TEST_SELF_SIGNED:=false}"
 : "${NTFY_TEST_VM:=ntfy-test}"
@@ -15,8 +24,6 @@
 : "${NTFY_TEST_VM_USER:=tester}"
 : "${NTFY_TEST_SSH_KEY:=}"
 export NTFY_TEST_SERVER NTFY_TEST_SELF_SIGNED
-
-_TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5)
 if [ -n "$NTFY_TEST_SSH_KEY" ]; then

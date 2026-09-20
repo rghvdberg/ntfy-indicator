@@ -173,6 +173,31 @@ For testing without affecting your main GNOME session, you can run a nested GNOM
 
 A new window will appear with a full GNOME desktop. The ntfy extension should be automatically enabled.
 
+### Dev Server Configuration
+
+Create `server.yml` (git-ignored) with your local ntfy server settings:
+
+```bash
+export NTFY_TEST_SERVER=https://your-dev-server:port
+export NTFY_TEST_SELF_SIGNED=true
+```
+
+The test scripts (`run.sh`, `test-integration.sh`) will automatically source this file if present. You can also override via environment variables:
+
+```bash
+NTFY_TEST_SERVER=https://ntfy.sh ./tests/run.sh
+```
+
+### Pre-configured Topics
+
+To have the extension automatically subscribe to topics when the nested shell starts, set `NTFY_CHANNELS`:
+
+```bash
+NTFY_CHANNELS=testing,testing2 ./tests/run-nested-shell.sh
+```
+
+This sets the `channels` gsetting before GNOME Shell launches, so the extension is ready on first start.
+
 Requires the `mutter-dev-bin` package (`/usr/libexec/mutter-devkit`) for the nested shell window to display:
 
 ```bash
