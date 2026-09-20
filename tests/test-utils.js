@@ -45,6 +45,7 @@ async function main() {
     "testing",
     "host with port",
   );
+  expectParse("http://[::1", null, "http://[::1", "malformed url falls back");
 
   const f = getNotificationFile("https://ntfy.example.org:8443/testing");
   assert(

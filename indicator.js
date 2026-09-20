@@ -85,10 +85,7 @@ export const Indicator = GObject.registerClass(
           const item = new PopupMenu.PopupMenuItem(label);
           item.connect("activate", () => {
             this.menu.close();
-            subscriptionManager._openHistoryDialog(
-              r.topic,
-              r.server || this.settings.get_string("server"),
-            );
+            subscriptionManager.openHistoryDialog(r.topic, r.server);
           });
           this.menu.addMenuItem(item);
         }

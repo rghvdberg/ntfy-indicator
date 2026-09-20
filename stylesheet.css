@@ -28,9 +28,3 @@
   min-width: 0;
   min-height: 100px;
 }
-
-.ntfy-image-loading {
-  background: rgba(128, 128, 128, 0.2);
-  border-radius: 4px;
-  min-height: 100px;
-}

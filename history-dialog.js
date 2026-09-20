@@ -437,11 +437,6 @@ export async function main() {
         margin_end: 12,
       });
 
-      let readBtn = null,
-        titleLabel = null,
-        msgLabel = null,
-        tagsLabel = null;
-
       const headerBox = new Gtk.Box({ spacing: 6 });
       const timeLabel = new Gtk.Label({
         label: _formatTime(m.time),
@@ -466,7 +461,7 @@ export async function main() {
 
       headerBox.append(new Gtk.Label({ hexpand: true }));
 
-      readBtn = new Gtk.Button({
+      const readBtn = new Gtk.Button({
         icon_name: "object-select-symbolic",
         css_classes: ["flat", "caption"],
       });
@@ -514,7 +509,7 @@ export async function main() {
       box.append(headerBox);
 
       if (m.title) {
-        titleLabel = new Gtk.Label({
+        const titleLabel = new Gtk.Label({
           label: m.title,
           halign: Gtk.Align.START,
           xalign: 0,
@@ -527,7 +522,7 @@ export async function main() {
       }
 
       if (m.message) {
-        msgLabel = new Gtk.Label({
+        const msgLabel = new Gtk.Label({
           label: m.message,
           halign: Gtk.Align.FILL,
           xalign: 0,
@@ -541,7 +536,7 @@ export async function main() {
 
       const tags = m.tags || [];
       if (tags.length > 0) {
-        tagsLabel = new Gtk.Label({
+        const tagsLabel = new Gtk.Label({
           label: `Tags: ${tags.join(", ")}`,
           halign: Gtk.Align.START,
           xalign: 0,
@@ -711,7 +706,6 @@ export async function main() {
     }
 
     // === Load messages from local store ===
-    let _loadedTopic = null; // topic whose rows are currently in the listbox
     const _rowById = new Map(); // id -> ListBoxRow of the current list
     const _lastTopIdByTopic = new Map(); // topic → newest id from last load
     const _scrollByTopic = new Map(); // topic → scroll position
@@ -733,7 +727,7 @@ export async function main() {
         try {
           if (!contents) {
             debugLog(`[history] No store file for ${t}`);
-            if (t !== _loadedTopic) _clearRows();
+            _clearRows();
             return;
           }
           const data = JSON.parse(new TextDecoder().decode(contents));
@@ -760,7 +754,6 @@ export async function main() {
           // Clear + repopulate in one main-loop turn so the empty state never
           // gets a layout pass (which would clamp the scroll to top).
           _clearRows();
-          _loadedTopic = t;
           for (const m of notifications) {
             _appendRow(m);
           }

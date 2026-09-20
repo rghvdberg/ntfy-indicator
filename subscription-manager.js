@@ -264,7 +264,12 @@ export class SubscriptionManager {
       return;
     }
     if (msg.event === "message_clear") {
-      await notificationStore.markRead(topicUrl, msg.sequence_id || msg.id);
+      // A server-side clear carries no sequence_id: everything in the topic
+      // is gone, so mark all read (converted tombstones do set sequence_id
+      // and take the markRead path via DeleteAll-style handling below).
+      if (msg.sequence_id)
+        await notificationStore.markRead(topicUrl, msg.sequence_id);
+      else await notificationStore.markAllRead(topicUrl);
       await notificationStore.setLastMessageId(topicUrl, msg.id);
       return;
     }
@@ -330,10 +335,8 @@ export class SubscriptionManager {
     // history dialog can display/open it without doing its own network IO
     // (GNOME Shell banners can't show large images; the dialog can).
     if (msg.attachment && msg.attachment.url) {
-      const apiKey = getApiKey(
-        this.settings,
-        topicUrl.replace(/\/[^\/]+$/, ""),
-      );
+      const { baseUrl } = parseTopicUrl(topicUrl);
+      const apiKey = getApiKey(this.settings, baseUrl);
       const acceptSelfSigned = this.settings.get_boolean("accept-self-signed");
       attachmentDownloader
         .downloadAttachment(msg.attachment, msg.id, acceptSelfSigned, apiKey)
@@ -359,16 +362,13 @@ export class SubscriptionManager {
       );
       const result = await notificationStore.markRead(topicUrl, msg.id);
       debugLog(`[ntfy] markRead result: ${result}`);
-      // Priority: click URL > attachment URL > history dialog
+      // Priority: click URL > history dialog
       if (msg.click) {
         debugLog(`[ntfy] Opening click URL: ${msg.click}`);
         Gio.AppInfo.launch_default_for_uri(msg.click, null);
-      } else if (msg.attach) {
-        debugLog(`[ntfy] Opening attachment: ${msg.attach}`);
-        Gio.AppInfo.launch_default_for_uri(msg.attach, null);
       } else {
         debugLog(`[ntfy] Opening history for topic: ${topic}`);
-        this._openHistoryDialog(topic, serverUrl);
+        this.openHistoryDialog(topic, serverUrl);
       }
     });
 
@@ -376,11 +376,11 @@ export class SubscriptionManager {
   }
 
   /**
-   * Open history dialog for a topic
+   * Open history dialog for a topic (also called from the indicator)
    * @param {string} topic - Topic name
    * @param {string} serverUrl - Server URL
    */
-  _openHistoryDialog(topic, serverUrl) {
+  openHistoryDialog(topic, serverUrl) {
     if (
       this._historyTopic === topic &&
       this._historyProc &&
@@ -457,13 +457,13 @@ export class SubscriptionManager {
    */
   async _publishFromCommand(cmd) {
     const topicUrl = cmd.topicUrl;
-    const baseUrl = topicUrl.replace(/\/[^\/]+$/, "");
+    const { baseUrl, topic } = parseTopicUrl(topicUrl);
     const api = new NtfyApi(
       baseUrl,
       getApiKey(this.settings, baseUrl),
       this.settings.get_boolean("accept-self-signed"),
     );
-    const path = topicUrl.replace(baseUrl, "");
+    const path = `/${topic}`;
     if (cmd.filePath) {
       const file = Gio.File.new_for_path(cmd.filePath);
       const [, bytes] = await new Promise((resolve, reject) =>

@@ -39,13 +39,22 @@ export function getNotificationFile(topicUrl) {
 
 export function parseTopicUrl(topicUrl) {
   if (!topicUrl.includes("://")) return { baseUrl: null, topic: topicUrl };
-  const uri = GLib.Uri.parse(topicUrl, GLib.UriFlags.NONE);
+  let uri;
+  try {
+    uri = GLib.Uri.parse(topicUrl, GLib.UriFlags.NONE);
+  } catch (e) {
+    // Malformed URL (e.g. "https://"): treat the whole entry as a topic name
+    // on the default server rather than crashing the caller.
+    debugLog(`[ntfy] Unparseable topic URL "${topicUrl}":`, e.message);
+    return { baseUrl: null, topic: topicUrl };
+  }
   const host = uri.get_host() || "";
   const ipv6 = host.includes(":") ? `[${host}]` : host;
   const baseUrl = `${uri.get_scheme()}://${ipv6}${uri.get_port() !== -1 ? `:${uri.get_port()}` : ""}`;
   const parts = (uri.get_path() || "").split("/").filter((p) => p);
   return { baseUrl, topic: parts.length ? parts[parts.length - 1] : "" };
 }
+
 export function getApiKey(settings, serverUrl) {
   try {
     const apiKeysStr = settings.get_string("api-keys");
