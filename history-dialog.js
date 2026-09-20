@@ -26,7 +26,7 @@ import Pango from "gi://Pango";
 import Gdk from "gi://Gdk?version=4.0";
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0";
 
-import { debugLog, parseTopicUrl, getNotificationFile } from "./utils.js";
+import { debugLog, parseTopicUrl, getNotificationFile, getDataDir } from "./utils.js";
 import {
   initAttachmentDownloader,
   attachmentDownloader,
@@ -76,6 +76,7 @@ export async function main() {
       "extensions",
       "ntfy-indicator@rghvdberg",
     ]);
+  const storeDirPath = getDataDir();
   function _storePath(t) {
     return getNotificationFile(topicUrlMap[t]);
   }
