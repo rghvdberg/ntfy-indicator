@@ -12,16 +12,14 @@ EXT_ID="ntfy-indicator@rghvdberg"
 BUILD_DIR="$PROJECT_ROOT/build"
 ZIP_FILE="$BUILD_DIR/$EXT_ID.shell-extension.zip"
 
-# Pack extension if it doesn't exist
-if [ ! -f "$ZIP_FILE" ]; then
-    echo "=> packing extension"
-    mkdir -p "$BUILD_DIR"
-    gnome-extensions pack -f -o build \
-        --extra-source=api.js --extra-source=attachment-downloader.js \
-        --extra-source=history-dialog.js --extra-source=indicator.js \
-        --extra-source=notification-store.js --extra-source=subscription-manager.js \
-        --extra-source=utils.js --extra-source=LICENSE --extra-source=icons .
-fi
+# Always pack fresh so local edits are reflected in the deployed zip.
+echo "=> packing extension"
+mkdir -p "$BUILD_DIR"
+gnome-extensions pack -f -o build \
+    --extra-source=api.js --extra-source=attachment-downloader.js \
+    --extra-source=history-dialog.js --extra-source=indicator.js \
+    --extra-source=notification-store.js --extra-source=subscription-manager.js \
+    --extra-source=utils.js --extra-source=LICENSE --extra-source=icons .
 
 # Create isolated environment and set it up
 NESTED_HOME="$(mktemp -d)"
@@ -64,8 +62,31 @@ echo "   Press Ctrl+C to stop"
 # Enable the extension inside the nested session's own D-Bus bus (the same
 # pattern that works when enabled from a terminal inside the session), then run
 # the shell on that bus per the documented --devkit approach.
+#
+# NTFY_SERVER / NTFY_SELF_SIGNED / NTFY_CHANNELS are optional; when set, the
+# extension is pre-configured in the nested session's own (isolated) HOME so it
+# is ready to go on first launch.
+SCHEMA="org.gnome.shell.extensions.ntfy-indicator"
+PREP="true"
+if [ -n "${NTFY_SERVER:-}" ]; then
+    PREP="$PREP; gsettings set $SCHEMA server '${NTFY_SERVER}'"
+fi
+if [ -n "${NTFY_SELF_SIGNED:-}" ]; then
+    PREP="$PREP; gsettings set $SCHEMA accept-self-signed ${NTFY_SELF_SIGNED}"
+fi
+if [ -n "${NTFY_CHANNELS:-}" ]; then
+    CH="["
+    IFS=',' read -ra _arr <<< "$NTFY_CHANNELS"
+    for c in "${_arr[@]}"; do CH="$CH'$c',"; done
+    CH="${CH%,}]"
+    PREP="$PREP; gsettings set $SCHEMA channels \"$CH\""
+fi
 dbus-run-session bash -c '
   gsettings set org.gnome.shell enabled-extensions "[\"$0\"]"
+  eval "$1"
+  echo "   server: $(gsettings get $2 server)"
+  echo "   accept-self-signed: $(gsettings get $2 accept-self-signed)"
+  echo "   channels: $(gsettings get $2 channels)"
   echo "   enabled: $(gsettings get org.gnome.shell enabled-extensions)"
   exec gnome-shell --devkit --wayland
-' "$EXT_ID"
+' "$EXT_ID" "$PREP" "$SCHEMA"

@@ -1,7 +1,10 @@
 import GLib from "gi://GLib";
 import Gio from "gi://Gio";
 import { NotificationStore } from "../notification-store.js";
-import { attachmentDownloader } from "../attachment-downloader.js";
+import {
+  initAttachmentDownloader,
+  attachmentDownloader,
+} from "../attachment-downloader.js";
 import { getDataDir, getNotificationFile } from "../utils.js";
 import { assert, runMain } from "./helpers.js";
 
@@ -20,6 +23,7 @@ const na = (id, time = 0) => ({
 });
 
 async function main() {
+  initAttachmentDownloader();
   // add / dedupe
   assert(
     (await store.addNotification("t-add", n("a1"), 100)) === true,

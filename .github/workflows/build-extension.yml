@@ -1,4 +1,4 @@
-name: Build and Upload GNOME Extension
+name: Build GNOME Extension
 
 on:
   push:
@@ -77,27 +77,3 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.package.outputs.zip-file }}
-
-  upload-ego:
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Package and Upload to extensions.gnome.org
-        uses: murar8/gnome-extensions-action@0.1.1
-        with:
-          source-dir: .
-          username: ${{ secrets.GNOME_USERNAME }}
-          password: ${{ secrets.GNOME_PASSWORD }}
-          accept-tos: true
-          extra-source: |
-            api.js
-            attachment-downloader.js
-            history-dialog.js
-            indicator.js
-            notification-store.js
-            subscription-manager.js
-            utils.js
-            LICENSE
-            icons

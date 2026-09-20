@@ -21,14 +21,22 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { Indicator } from "./indicator.js";
 import {
   initSubscriptionManager,
+  resetSubscriptionManager,
   subscriptionManager,
 } from "./subscription-manager.js";
-import { notificationStore } from "./notification-store.js";
+import { initAttachmentDownloader, resetAttachmentDownloader } from "./attachment-downloader.js";
+import {
+  initNotificationStore,
+  resetNotificationStore,
+  notificationStore,
+} from "./notification-store.js";
 import { debugLog, parseTopicUrl } from "./utils.js";
 
 export default class NtfyExtension extends Extension {
   enable() {
     this._settings = this.getSettings();
+    initAttachmentDownloader();
+    initNotificationStore();
     initSubscriptionManager(this._settings, this.path);
     this._indicator = new Indicator(this._settings, this);
     Main.panel.addToStatusArea(this.uuid, this._indicator);
@@ -47,12 +55,18 @@ export default class NtfyExtension extends Extension {
   disable() {
     // Single teardown path: the manager owns all subscriptions and their
     // timers/streams (→ unsubscribeAll → unsubscribe → cancel); the indicator
-    // only cleans its own signals/menu state below.
+    // only cleans its own signals/menu state below. Singletons are released
+    // last — teardown above still references them (indicator clears the
+    // store's _onChange callback) — so module scope holds no instances while
+    // disabled, per EGO review guidelines.
     if (subscriptionManager) subscriptionManager.destroy();
     if (this._indicator) {
       this._indicator.destroy();
       this._indicator = null;
     }
+    resetSubscriptionManager();
+    resetAttachmentDownloader();
+    resetNotificationStore();
     this._settings = null;
     debugLog("Extension disabled");
   }

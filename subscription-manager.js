@@ -294,7 +294,7 @@ export class SubscriptionManager {
     try {
       this._showNotification(topicUrl, msg);
     } catch (e) {
-      console.error(`[ntfy] _showNotification failed: ${e.message}`, e);
+      debugLog("_showNotification failed:", e.message, e);
     }
   }
 
@@ -538,4 +538,12 @@ export let subscriptionManager = null;
 export function initSubscriptionManager(settings, extPath) {
   subscriptionManager = new SubscriptionManager(settings, extPath);
   return subscriptionManager;
+}
+
+/**
+ * Release the singleton (disable() path per EGO review guidelines: module
+ * scope must hold no instances while disabled; call after destroy())
+ */
+export function resetSubscriptionManager() {
+  subscriptionManager = null;
 }

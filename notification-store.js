@@ -307,6 +307,25 @@ export class NotificationStore {
 }
 
 /**
- * Singleton notification store instance
+ * Singleton notification store instance (lazy: call initNotificationStore()
+ * from enable() — no object instantiation in global scope per EGO review
+ * guidelines).
  */
-export const notificationStore = new NotificationStore();
+export let notificationStore = null;
+
+/**
+ * Initialize notification store
+ * @returns {NotificationStore} The singleton instance
+ */
+export function initNotificationStore() {
+  if (!notificationStore) notificationStore = new NotificationStore();
+  return notificationStore;
+}
+
+/**
+ * Release the singleton (disable() path per EGO review guidelines: module
+ * scope must hold no instances while disabled)
+ */
+export function resetNotificationStore() {
+  notificationStore = null;
+}

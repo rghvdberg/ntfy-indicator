@@ -27,7 +27,10 @@ import Gdk from "gi://Gdk?version=4.0";
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0";
 
 import { debugLog, parseTopicUrl, getNotificationFile } from "./utils.js";
-import { attachmentDownloader } from "./attachment-downloader.js";
+import {
+  initAttachmentDownloader,
+  attachmentDownloader,
+} from "./attachment-downloader.js";
 
 // Shell-side service the dialog sends actions to (must match
 // subscription-manager.js)
@@ -35,6 +38,7 @@ const DBUS_NAME = "org.gnome.Shell.Extensions.NtfyIndicator";
 const DBUS_PATH = "/org/gnome/Shell/Extensions/NtfyIndicator";
 
 export async function main() {
+  initAttachmentDownloader();
   const args = ARGV;
   if (args.length < 4) {
     print(
@@ -86,14 +90,13 @@ export async function main() {
     );
   }
 
-  const PRIORITY_LABELS = [
-    null, // 0-index unused
-    { text: "▲▲", color: "#999" },
-    { text: "▲", color: "#999" },
-    null, // 3 unused
-    { text: "▼", color: "#c60000" },
-    { text: "▼▼", color: "#a00" },
-  ];
+  // Per-level priority icons in icons/ (web-app style; default 3 = no icon)
+  const PRIORITY_ICONS = {
+    1: "priority-1.svg",
+    2: "priority-2.svg",
+    4: "priority-4.svg",
+    5: "priority-5.svg",
+  };
 
   const app = new Adw.Application({
     application_id: "com.ntfy.HistoryDialog",
@@ -148,7 +151,6 @@ export async function main() {
       _sendCommand("MarkAllRead");
       _setTopicCount(currentTopic, 0);
       for (const row of _rowById.values()) {
-        if (row._dotLabel) row._dotLabel.get_parent().remove(row._dotLabel);
         if (row._readBtn) row._readBtn.set_visible(false);
       }
     });
@@ -339,7 +341,10 @@ export async function main() {
       orientation: Gtk.Orientation.HORIZONTAL,
       spacing: 8,
     });
-    const expandBtn = new Gtk.Button({ label: "^", sensitive: false });
+    const expandBtn = new Gtk.Button({
+      icon_name: "go-up-symbolic",
+      sensitive: false,
+    });
     expandBtn.connect("clicked", () => _openPublishDialog());
 
     const publishEntry = new Gtk.Entry({
@@ -432,8 +437,7 @@ export async function main() {
         margin_end: 12,
       });
 
-      let dotLabel = null,
-        readBtn = null,
+      let readBtn = null,
         titleLabel = null,
         msgLabel = null,
         tagsLabel = null;
@@ -445,27 +449,25 @@ export async function main() {
       });
       headerBox.append(timeLabel);
 
-      if (m.priority && PRIORITY_LABELS[m.priority]) {
-        const p = PRIORITY_LABELS[m.priority];
-        const prioLabel = new Gtk.Label({
-          label: p.text,
+      const prioFile = PRIORITY_ICONS[m.priority];
+      if (prioFile) {
+        const prioImg = new Gtk.Image({
+          gicon: Gio.FileIcon.new(
+            Gio.File.new_for_path(
+              GLib.build_filenamev([extDir, "icons", prioFile]),
+            ),
+          ),
+          pixel_size: 14,
           css_classes: ["caption"],
         });
-        prioLabel.set_markup(`<span foreground="${p.color}">${p.text}</span>`);
-        headerBox.append(prioLabel);
+        prioImg.tooltip_text = `Priority ${m.priority}`;
+        headerBox.append(prioImg);
       }
-
-      if (m.new === 1 || m.new === true) {
-        dotLabel = new Gtk.Label({ label: "\u25CF", css_classes: ["caption"] });
-        dotLabel.set_markup('<span foreground="#338574">\u25CF</span>');
-        headerBox.append(dotLabel);
-      }
-      row._dotLabel = dotLabel;
 
       headerBox.append(new Gtk.Label({ hexpand: true }));
 
       readBtn = new Gtk.Button({
-        label: "\u2713",
+        icon_name: "object-select-symbolic",
         css_classes: ["flat", "caption"],
       });
       readBtn.connect("clicked", () => {
@@ -477,14 +479,13 @@ export async function main() {
             Math.max(0, (topicCounts[currentTopic] || 0) - 1),
           );
         }
-        if (dotLabel) headerBox.remove(dotLabel);
         readBtn.set_visible(false);
       });
       headerBox.append(readBtn);
       row._readBtn = readBtn;
 
       const delBtn = new Gtk.Button({
-        label: "\u2715",
+        icon_name: "edit-delete-symbolic",
         css_classes: ["flat", "caption"],
       });
       delBtn.connect("clicked", () => {
@@ -944,7 +945,7 @@ export async function main() {
         css_classes: ["caption"],
       });
       const attClearBtn = new Gtk.Button({
-        label: "\u2715",
+        icon_name: "edit-clear-symbolic",
         css_classes: ["flat", "circular"],
       });
       attClearBtn.set_size_request(24, 24);

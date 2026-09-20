@@ -203,6 +203,26 @@ export class AttachmentDownloader {
 }
 
 /**
- * Singleton image downloader instance
+ * Singleton image downloader instance (lazy: call initAttachmentDownloader()
+ * from enable()/main() — no object instantiation in global scope per EGO
+ * review guidelines).
  */
-export const attachmentDownloader = new AttachmentDownloader();
+export let attachmentDownloader = null;
+
+/**
+ * Initialize attachment downloader
+ * @returns {AttachmentDownloader} The singleton instance
+ */
+export function initAttachmentDownloader() {
+  if (!attachmentDownloader)
+    attachmentDownloader = new AttachmentDownloader();
+  return attachmentDownloader;
+}
+
+/**
+ * Release the singleton (disable() path per EGO review guidelines: module
+ * scope must hold no instances while disabled)
+ */
+export function resetAttachmentDownloader() {
+  attachmentDownloader = null;
+}
